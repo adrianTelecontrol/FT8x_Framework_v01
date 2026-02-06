@@ -2,12 +2,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "UL_Flame_Test_v2_x",
+            "name": "EVE_dev_v2",
             "type": "ccs-debug",
             "request": "launch",
             "projectInfo": {
-                "name": "UL_Flame_Test_v2_x",
-                "resourceId": "/UL_Flame_Test_v2_x"
+                "name": "EVE_dev_v2",
+                "resourceId": "/EVE_dev_v2"
             },
             "connections": [
                 {
@@ -22,6 +22,83 @@
                     ]
                 }
             ]
+        },
+        {
+            "name": "eve_load_image",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "eve_load_image",
+                "resourceId": "/eve_load_image"
+            }
+        },
+        {
+            "name": "eve_load_image_onsdram",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "eve_load_image_onsdram",
+                "resourceId": "/eve_load_image_onsdram"
+            }
+        },
+        {
+            "name": "eve_sdram_spi",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "eve_sdram_spi",
+                "resourceId": "/eve_sdram_spi"
+            },
+            "connections": [
+                {
+                    "name": "Texas Instruments XDS2xx USB Debug Probe",
+                    "cores": [
+                        {
+                            "name": "CORTEX_M4_0",
+                            "debuggerSettings": {
+                                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "eve_sdram_disp_img",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "eve_sdram_disp_img",
+                "resourceId": "/eve_sdram_disp_img"
+            },
+            "connections": [
+                {
+                    "name": "Texas Instruments XDS2xx USB Debug Probe",
+                    "cores": [
+                        {
+                            "name": "CORTEX_M4_0",
+                            "debuggerSettings": {
+                                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "target_config.ccxml",
+            "type": "ccs-debug",
+            "request": "launch",
+            "targetConfig": "${targetConfigFolder}\\target_config.ccxml"
+        },
+        {
+            "name": "new_engine_test_1",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "new_engine_test_1",
+                "resourceId": "/new_engine_test_1"
+            }
         }
     ]
 }
