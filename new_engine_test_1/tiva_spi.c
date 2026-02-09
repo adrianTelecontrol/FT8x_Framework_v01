@@ -24,9 +24,6 @@
 
 extern uint8_t pui8ControlTable[1024];
 
-uint8_t pui8TxBuff[SPI_TRX_SIZE]; // Max transaction size
-uint8_t pui8RxBuff[SPI_TRX_SIZE];
-
 extern const uint32_t g_ui32SysClock;
 
 #define VERBOSE_LV1
@@ -205,13 +202,6 @@ void uDMA_Init(void) {
 
   uint_fast16_t ui16Idx;
 
-  //
-  // Initialize TRX vectors
-  //
-  for (ui16Idx = 0; ui16Idx < SPI_TRX_SIZE; ui16Idx++) {
-    pui8TxBuff[ui16Idx] = 0;
-    pui8RxBuff[ui16Idx] = 0;
-  }
 
   //
   // Configure CH14 SSI3 RX. First put the channel in a known state
