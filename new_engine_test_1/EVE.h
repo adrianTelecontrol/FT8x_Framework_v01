@@ -68,7 +68,7 @@ void API_LIB_EndCoProList(void);
 void API_LIB_AwaitCoProEmpty(void);
 void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
                            uint32_t DestAddress);
-bool EVE_VerifyRAMG(const uint8_t *ImgData, uint32_t DataSize, uint32_t DestAddress);
+// bool EVE_VerifyRAMG(const uint8_t *ImgData, uint32_t DataSize, uint32_t DestAddress);
 void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc, const uint32_t ui32Size, uint32_t ui32DestAddr);
 uint8_t API_SendString(const char *string);
 void API_LIB_WriteDataToCMD(const uint8_t *ImgData, uint32_t TotalDataSize);

@@ -164,7 +164,8 @@ void inverseMapping(SquareObject *obj) {
   }
 }
 
-void TEST_collideSquares(void) {
+void TEST_collideSquares(void) 
+{
   // srand();
   scene.pixels = (u8 *)malloc(sizeof(u16) * SCREEN_WIDTH * SCREEN_HEIGHT);
   // scene.pixels = (u8 *)0x60000000;

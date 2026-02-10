@@ -7,7 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "image_loader.h"
+#include "graphics_engine.h"
+//#include "image_loader.h"
 // #include "FT8xx_params.h"
 
 #include "draw_bitmap.h"
@@ -158,6 +159,8 @@ void inverseMapping(SquareObject *obj) {
         // FIX: Multiply index by 2 for RGB565
         u32 pixelIndex = rowOffset + (i * 2);
 
+		Gfx_loadIntoBuffer(pixelIndex, obj->color);
+
         scene.pixels[pixelIndex] = (u8)((obj->color >> 8) & 0xFF);
         scene.pixels[pixelIndex + 1] = (u8)(obj->color & 0xFF);
       }
@@ -306,10 +309,10 @@ void TEST_collideSquares(void) {
   scene.width = SCREEN_WIDTH;
   scene.height = SCREEN_HEIGHT;
 
-  BitmapHandler_t sBmpHandler;
-  sBmpHandler.ui8Pixels = scene.pixels;
-  sBmpHandler.sHeader.bitmap_height = SCREEN_HEIGHT;
-  sBmpHandler.sHeader.bitmap_width = SCREEN_WIDTH;
+  // BitmapHandler_t sBmpHandler;
+  // sBmpHandler.ui8Pixels = scene.pixels;
+  // sBmpHandler.sHeader.bitmap_height = SCREEN_HEIGHT;
+  // sBmpHandler.sHeader.bitmap_width = SCREEN_WIDTH;
 
   initializeSquareObjects();
 
@@ -322,9 +325,10 @@ void TEST_collideSquares(void) {
       inverseMapping(&squares[i]);
     }
 
-    u8 ui8Flags = 0;
+    // u8 ui8Flags = 0;
     // ui8Flags |= EVE_LOAD_IMG_POLLING;
-    ui8Flags |= EVE_LOAD_IMG_UDMA;
-    EVE_LoadBitmap(&sBmpHandler, ui8Flags);
+    //ui8Flags |= EVE_LOAD_IMG_UDMA;
+    // EVE_LoadBitmap(&sBmpHandler, ui8Flags);
+	Gfx_render();
   }
 }

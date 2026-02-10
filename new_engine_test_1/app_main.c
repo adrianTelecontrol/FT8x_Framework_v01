@@ -31,12 +31,13 @@
 #include "ft81x_spi_test.h"
 #include "gfx.h"
 #include "helpers.h"
-#include "image_loader.h"
+// #include "image_loader.h"
 #include "image_wrapper.h"
 #include "sdram_hal.h"
 #include "sdspi_hal.h"
 #include "tiva_log.h"
 #include "tiva_spi.h"
+#include "graphics_engine.h"
 
 #include "draw_bitmap.h"
 //*****************************************************************************
@@ -339,6 +340,8 @@ int main(void) {
       TASK_NAME,
       "\t\t-------------------------------------------------------------\n");
   TIVA_LOGI(TASK_NAME, "Starting application...");
+
+  Gfx_initEngine(LCD_WIDTH, LCD_HEIGHT);
 
   // Test if the SDRAM is working
 #ifdef ENABLE_SDRAM_TEST
