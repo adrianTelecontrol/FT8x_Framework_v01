@@ -51,10 +51,9 @@ extern void _c_int00(void);
 // 
 //
 //*****************************************************************************
-// extern void uDMAIntHandler(void);
 extern void SysTickHandler(void);
 extern void UARTStdioIntHandler(void);
-
+// extern void SSI3IntHandler(void);
 //*****************************************************************************
 //
 // Linker variable that marks the top of the stack.

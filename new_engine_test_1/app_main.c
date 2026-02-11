@@ -8,6 +8,7 @@
 #include <inc/hw_epi.h>
 #include <inc/hw_memmap.h>
 #include <inc/hw_types.h>
+#include <inc/hw_ints.h>
 
 #include "driverlib/epi.h"
 #include "driverlib/gpio.h"
@@ -327,7 +328,6 @@ int main(void) {
   ConfigureUART();
 
   MAP_IntMasterEnable();
-
   // Initial message
   UARTprintf("\n");
   TIVA_LOGI(

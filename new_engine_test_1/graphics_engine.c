@@ -8,18 +8,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 #include <driverlib/sysctl.h>
 
 #include "EVE.h"
 #include "helpers.h"
 
+#include "tiva_spi.h"
 #include <graphics_engine.h>
 
 #define GFX_WORKING_LAYERS 2
 #define GFX_WORKING_LAYER 0
 #define GFX_LAST_LAYER 1
-#define GFX_UDMA_BATCH_SIZE	1024 // 4 * 8 bytes * 1024
+#define GFX_UDMA_BATCH_SIZE 64 // 4 * 8 bytes * 1024
+
+#define MEASURE_PERF_ENABLE
 
 GfxLayer_t g_sWorkingLayers[GFX_WORKING_LAYERS];
 
@@ -58,53 +60,100 @@ void Gfx_loadIntoBuffer(uint32_t ui32Index, uint16_t ui16Pixel) {
 void Gfx_render(void) {
   uint8_t ui8PastLayer = GFX_LAST_LAYER;
 
+#ifdef MEASURE_PERF_ENABLE
+  DWTInitCycleCounter();
+  DWTResetCycleCounter();
+  DWTEnableCycleCounter();
+#endif
+
   GfxLayer_t *gfxPast = &g_sWorkingLayers[ui8PastLayer];
   GfxLayer_t *gfxCurr = &g_sWorkingLayers[g_ui8WorkingLayer];
 
-  uint32_t ui32Index = 0;
+  uint32_t pixelIndex = 0;
 
   // Option 1. Sending All the frame
   // API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxCurr->psPixelBuffer,
   // gfxCurr->ui32BuffSize * 2, 0);
 
-  uint32_t ui32End = gfxPast->ui32BuffSize;
+  uint32_t pixelIndexEnd = gfxPast->ui32BuffSize;
+  /*/
+    uint32_t *pPast32 = (uint32_t *)gfxPast->psPixelBuffer;
+    uint32_t *pCurr32 = (uint32_t *)gfxCurr->psPixelBuffer;
+  */
+  while (pixelIndex < pixelIndexEnd) {
+    // uint32_t ui32ValNew = pCurr32[pixelIndex];
 
-  uint32_t *pPast32 = (uint32_t *)gfxPast->psPixelBuffer;
-  uint32_t *pCurr32 = (uint32_t *)gfxCurr->psPixelBuffer;
-
-  while (ui32Index < (ui32End / 2)) 
-  {
-    uint32_t ui32ValNew = pCurr32[ui32Index];
-
-    if (pPast32[ui32Index] != ui32ValNew) 
-	{
-	  // Count how many differences thera are
-      uint32_t ui32Start = ui32Index;
+    if (gfxPast->psPixelBuffer[pixelIndex].u16 !=
+        gfxCurr->psPixelBuffer[pixelIndex].u16) {
+      // Count how many differences thera are
+      uint32_t ui32Start = pixelIndex;
       uint32_t ui32Count = 0;
 
-      pPast32[ui32Index] = ui32ValNew;
+      gfxPast->psPixelBuffer[pixelIndex].u16 =
+          gfxCurr->psPixelBuffer[pixelIndex].u16;
       ui32Count++;
-      ui32Index++;
+      pixelIndex++;
 
       // Search for more changes
-      while ((ui32Index < (ui32End / 2)) &&
-             (pPast32[ui32Index] != pCurr32[ui32Index])) {
-        pPast32[ui32Index] = pCurr32[ui32Index];
+      while ((pixelIndex < pixelIndexEnd) &&
+             (gfxPast->psPixelBuffer[pixelIndex].u16 !=
+              gfxCurr->psPixelBuffer[pixelIndex].u16)) {
+        gfxPast->psPixelBuffer[pixelIndex].u16 =
+            gfxCurr->psPixelBuffer[pixelIndex].u16;
         ui32Count++;
-        ui32Index++;
+        pixelIndex++;
 
-        // If it a limit, send the batch and continue serching 
-        //if (ui32Count > GFX_UDMA_BATCH_SIZE)
+        // If it a limit, send the batch and continue serching
+        // if (ui32Count > GFX_UDMA_BATCH_SIZE)
         //  break;
       }
 
-	  // Here compare if the transfer needs to be uDMA or normal SPI
-      API_LIB_WriteDataRAMG_ui32(&pPast32[ui32Start], ui32Count,
-                            RAM_G + (ui32Start * 4));
-    } 
-	else 
-	{
-      ui32Index++;
+      EVE_CS_LOW();
+      EVE_AddrForWr(RAM_G + ui32Start * 2);
+      // Send destination address (RAM_G + Offset)
+      if (ui32Count < GFX_UDMA_BATCH_SIZE) {
+      //if (true) {
+        uint32_t ui32Index = ui32Start;
+        uint32_t ui32IndexEnd = ui32Index + ui32Count;
+        // EVE_CS_LOW();
+        // EVE_AddrForWr(RAM_G + ui32Start * 2);
+        for (; ui32Index < ui32IndexEnd; ui32Index++) {
+          display_SPI_ReadWrite(gfxPast->psPixelBuffer[ui32Index].u8[0]);
+          display_SPI_ReadWrite(gfxPast->psPixelBuffer[ui32Index].u8[1]);
+        }
+
+        // EVE_CS_HIGH();
+      } 
+	  else {
+        // API_LIB_WriteDataRAMG_uDMA(gfxPast->psPixelBuffer[ui32Start].u8,
+        //                            ui32Count * 2, RAM_G + (ui32Start * 2));
+		
+		uint32_t ui32TxCount = 0;
+        while (ui32Count) {
+          uint32_t ui32CurrChunkSize = (ui32Count > 512) ? 512 : ui32Count;
+
+          display_SPI_uDMA_transfer(gfxPast->psPixelBuffer[ui32Start + ui32TxCount].u8, NULL,
+                                    ui32CurrChunkSize * 2);
+		  ui32TxCount += ui32CurrChunkSize;
+          ui32Count -= ui32CurrChunkSize;
+        }
+
+        SSIIntDisable(SSI3_BASE, SSI_TXFF | SSI_RXFF | SSI_RXOR | SSI_RXTO);
+
+        uint32_t ui32Status = SSIIntStatus(SSI3_BASE, 1);
+        if (ui32Status & SSI_RXOR) {
+          SSIIntClear(SSI3_BASE, SSI_RXOR);
+        }
+
+        uint32_t ui32Trash;
+        while (SSIDataGetNonBlocking(SSI3_BASE, &ui32Trash))
+          ;
+      }
+      EVE_CS_HIGH();
+      
+
+    } else {
+      pixelIndex++;
     }
   }
 
@@ -155,8 +204,16 @@ void Gfx_render(void) {
   API_END();
 
 #ifdef MEASURE_PERF_ENABLE
+  uint32_t duration = DWTGetCycleCounter();
+  DWTDisableCycleCounter();
+  const uint32_t CLOCK_PERIOD = g_ui32SysClock / 1E6;
+  uint32_t us_whole = duration / CLOCK_PERIOD;
+  // uint32_t us_frac =
+  //     (duration % CLOCK_PERIOD) * 100 / CLOCK_PERIOD; /* 2 decimal places */
+  g_ui32ExecDurMs = us_whole / 1000;
   API_COLOR_RGB(255, 0, 0);
-  API_CMD_NUMBER(LCD_WIDTH - 100, LCD_HEIGHT - 50, 30, 0, g_ui32ExecDurMs);
+  API_CMD_NUMBER(u16DrawnWidth - 100, u16DrawnHeight - 50, 30, 0,
+                 g_ui32ExecDurMs);
   // API_CMD_NUMBER(LCD_WIDTH / 2, LCD_HEIGHT / 2, 29, 0, g_ui32ExecDurMs);
   API_CMD_SETBASE(10);
 #endif
@@ -171,6 +228,7 @@ void Gfx_render(void) {
   memset(gfxCurr->psPixelBuffer, 0x00, gfxCurr->ui32BuffSize * 2);
   // memset(gfxPast->psPixelBuffer, 1, gfxCurr->ui32BuffSize * 2);
 }
+
 /*
 void Gfx_render(void)
 {

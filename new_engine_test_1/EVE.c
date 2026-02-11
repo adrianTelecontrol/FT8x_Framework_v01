@@ -585,10 +585,6 @@ void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
     // uDMA hardware limit is 1024 items
     ui32CurrChunkSize = (ui32BytesRmd > 1024) ? 1024 : ui32BytesRmd;
 
-    // --- CRITICAL FIX ---
-    // 1. Removed pui32Buffer (Fixes Stack Overflow)
-    // 2. Removed memcpy (Fixes SDRAM Burst/Grid issue)
-    // 3. Point uDMA source directly to SDRAM image data
     display_SPI_uDMA_transfer(&pui8ImgSrc[ui32BytesSent], NULL,
                               ui32CurrChunkSize);
 
@@ -605,7 +601,7 @@ void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
     }
   }
 
-  // 5. Disable SPI Interrupts/Cleanup
+  // 5. Disable SPI Interrupts/Cleanup 
   SSIIntDisable(SSI3_BASE, SSI_TXFF | SSI_RXFF | SSI_RXOR | SSI_RXTO);
 
   uint32_t ui32Status = SSIIntStatus(SSI3_BASE, 1);
@@ -619,6 +615,7 @@ void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
 
   EVE_CS_HIGH();
 }
+
 /*
 void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
                                 uint32_t ui32Size,

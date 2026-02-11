@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "graphics_engine.h"
+#include "helpers.h"
 //#include "image_loader.h"
 // #include "FT8xx_params.h"
 
