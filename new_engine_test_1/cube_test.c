@@ -75,33 +75,54 @@ void initializeCube(void) {
   // sqr->height = SCREEN_HEIGHT / 6.0f;
                                           (SCREEN_HEIGHT / 7.0f) + 1.0f) +
                            (SCREEN_HEIGHT / 7.0f));
-  sqr->width = ui16SideSize;
-  sqr->height = ui16SideSize;
-  sqr->scale = 1.0f;
-  sqr->boundingBox =
-      sqr->scale *
-      (sqrtf(sqr->width * sqr->width + sqr->height * sqr->height) / 2.0f);
+                                          sqr->width = ui16SideSize;
+                                          sqr->height = ui16SideSize;
+                                          sqr->scale = 1.0f;
+                                          sqr->boundingBox =
+                                              sqr->scale *
+                                              (sqrtf(sqr->width * sqr->width +
+                                                     sqr->height *
+                                                         sqr->height) /
+                                               2.0f);
 
-  // Margin is the radius. We must spawn between [margin] and [Limit -
-  // margin]
-  int margin = (int)sqr->boundingBox + 1;
-  int safeWidth = SCREEN_WIDTH - (2 * margin);
-  int safeHeight = SCREEN_HEIGHT - (2 * margin);
+                                          // Margin is the radius. We must spawn
+                                          // between [margin] and [Limit -
+                                          // margin]
+                                          int margin =
+                                              (int)sqr->boundingBox + 1;
+                                          int safeWidth =
+                                              SCREEN_WIDTH - (2 * margin);
+                                          int safeHeight =
+                                              SCREEN_HEIGHT - (2 * margin);
 
-  // If the square is too big for the screen, center it
-  sqr->pos.x =
-      (safeWidth > 0) ? (margin + (rand() % safeWidth)) : (SCREEN_WIDTH / 2.0f);
-  sqr->pos.y = (safeHeight > 0) ? (margin + (rand() % safeHeight))
-                                : (SCREEN_HEIGHT / 2.0f);
+                                          // If the square is too big for the
+                                          // screen, center it
+                                          sqr->pos.x =
+                                              (safeWidth > 0)
+                                                  ? (margin +
+                                                     (rand() % safeWidth))
+                                                  : (SCREEN_WIDTH / 2.0f);
+                                          sqr->pos.y =
+                                              (safeHeight > 0)
+                                                  ? (margin +
+                                                     (rand() % safeHeight))
+                                                  : (SCREEN_HEIGHT / 2.0f);
 
-  sqr->vel.x = (f32)((rand() % 20) - 10);
-  sqr->vel.y = (f32)((rand() % 20) - 10);
-  sqr->angle = (f32)(rand() % 360);
-  sqr->color = COLORS[rand() % COLORS_LEN];
-  sqr->mass = (sqr->scale * sqr->width * sqr->height) / 10;
-  sqr->inertia = (1.0f / 6.0f) * sqr->mass * (ui16SideSize * ui16SideSize);
-  // sqr->angularVel = 1;
-  sqr->angularVel = rand() % 10;
+                                          sqr->vel.x =
+                                              (f32)((rand() % 20) - 10);
+                                          sqr->vel.y =
+                                              (f32)((rand() % 20) - 10);
+                                          sqr->angle = (f32)(rand() % 360);
+                                          sqr->color =
+                                              COLORS[rand() % COLORS_LEN];
+                                          sqr->mass = (sqr->scale * sqr->width *
+                                                       sqr->height) /
+                                                      10;
+                                          sqr->inertia =
+                                              (1.0f / 6.0f) * sqr->mass *
+                                              (ui16SideSize * ui16SideSize);
+                                          // sqr->angularVel = 1;
+                                          sqr->angularVel = rand() % 10;
 }
 
 void inverseMapping(SquareObject *obj) {
@@ -164,8 +185,7 @@ void inverseMapping(SquareObject *obj) {
   }
 }
 
-void TEST_collideSquares(void) 
-{
+void TEST_collideSquares(void) {
   // srand();
   scene.pixels = (u8 *)malloc(sizeof(u16) * SCREEN_WIDTH * SCREEN_HEIGHT);
   // scene.pixels = (u8 *)0x60000000;

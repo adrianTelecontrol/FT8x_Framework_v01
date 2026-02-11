@@ -20,8 +20,8 @@
 #define C_RED 0xF800    // Original: 0xFF0000FF (R=255, G=0,   B=0)
 #define C_GREEN 0x07E0  // Original: 0xFF00FF00 (R=0,   G=255, B=0)
 #define C_BLUE 0x001F   // Original: 0xFFFF0000 (R=0,   G=0,   B=255)
-#define C_YELLOW 0xFFE0 // Original: 0xFF00FFFF (R=255, G=255, B=0)
-#define C_CYAN 0x07FF   // Original: 0xFFFFFF00 (R=0,   G=255, B=255)
+#define C_YELLOW 0xF7E0 // Original: 0xFF00FFFF (R=255, G=255, B=0)
+#define C_CYAN 0x07FE   // Original: 0xFFFFFF00 (R=0,   G=255, B=255)
 #define C_ORANGE 0xFD20 // Original: 0xFF00A5FF (R=255, G=165, B=0)
 #define C_PINK 0xCE1F   // Original: 0xFFFFC0CB (R=203, G=192, B=255)
 #define C_LIME 0x87E0   // Original: 0xFF00FF80 (R=128, G=255, B=0)
@@ -42,7 +42,7 @@ typedef struct {
 } vect2d;
 
 typedef struct {
-  u8 *pixels;
+  u16 *pixels;
   u16 width;
   u16 height;
 } Scene_t;
@@ -111,6 +111,64 @@ void initializeSquareObjects(void) {
 }
 
 void inverseMapping(SquareObject *obj) {
+    f32 rad = -obj->angle * (3.14159265f / 180.0f);
+    f32 cosA = cosf(rad);
+    f32 sinA = sinf(rad);
+
+    f32 stepXi = cosA / obj->scale;
+    f32 stepYi = sinA / obj->scale;
+    f32 stepXj = -sinA / obj->scale;
+    f32 stepYj = cosA / obj->scale;
+
+    f32 hw = obj->width / 2.0f;
+    f32 hh = obj->height / 2.0f;
+
+    // 1. Calculate boundaries as SIGNED integers first
+    int sI = (int)(obj->pos.x - obj->boundingBox);
+    int sJ = (int)(obj->pos.y - obj->boundingBox);
+    int eI = (int)(obj->pos.x + obj->boundingBox);
+    int eJ = (int)(obj->pos.y + obj->boundingBox);
+
+    // 2. CLAMP boundaries to screen dimensions (This prevents the crash!)
+    if (sI < 0)
+        sI = 0;
+    if (sJ < 0)
+        sJ = 0;
+    if (eI > SCREEN_WIDTH)
+        eI = SCREEN_WIDTH;
+    if (eJ > SCREEN_HEIGHT)
+        eJ = SCREEN_HEIGHT;
+
+    // 3. Calculate initial offsets based on the CLAMPED start points
+    f32 start_dx = (f32)sI - obj->pos.x;
+    f32 start_dy = (f32)sJ - obj->pos.y;
+
+    f32 rowX = (start_dx * cosA - start_dy * sinA) / obj->scale;
+    f32 rowY = (start_dx * sinA + start_dy * cosA) / obj->scale;
+
+    // 4. Use the clamped integers for the loops
+	uint32_t j = 0;
+    for (j = sJ; j < eJ; j++) {
+        f32 x = rowX;
+        f32 y = rowY;
+
+		uint32_t i = 0;
+        for (i = sI; i < eI; i++) {
+            if (x >= -hw && x <= hw && y >= -hh && y <= hh) {
+                // Now this is guaranteed to be within the pixels array
+                scene.pixels[j * SCREEN_WIDTH + i] = obj->color;
+				Gfx_loadIntoBuffer(j * SCREEN_WIDTH + i, obj->color);
+            }
+            x += stepXi;
+            y += stepYi;
+        }
+        rowX += stepXj;
+        rowY += stepYj;
+    }
+}
+
+/*
+void inverseMapping(SquareObject *obj) {
   f32 rad = -obj->angle * (3.14159265f / 180.0f);
   f32 cosA = cosf(rad);
   f32 sinA = sinf(rad);
@@ -157,6 +215,7 @@ void inverseMapping(SquareObject *obj) {
     for (i = sI; i < eI; i++) {
       if (x >= -hw && x <= hw && y >= -hh && y <= hh) {
         // FIX: Multiply index by 2 for RGB565
+        // u32 pixelIndex = rowOffset + (i * 2);
         u32 pixelIndex = rowOffset + (i * 2);
 
 		Gfx_loadIntoBuffer(pixelIndex, obj->color);
@@ -170,7 +229,7 @@ void inverseMapping(SquareObject *obj) {
     rowX += stepXj;
     rowY += stepYj;
   }
-}
+}*/
 
 void basicObjectCollision(void) {
   u16 i = 0;
@@ -304,7 +363,8 @@ void basicObjectCollision(void) {
 
 void TEST_collideSquares(void) {
   // srand();
-  scene.pixels = (u8 *)malloc(sizeof(u16) * SCREEN_WIDTH * SCREEN_HEIGHT);
+  // scene.pixels = (u8 *)malloc(sizeof(u16) * SCREEN_WIDTH * SCREEN_HEIGHT);
+  scene.pixels = (u16 *)malloc(sizeof(u16) * SCREEN_WIDTH * SCREEN_HEIGHT);
   // scene.pixels = (u8 *)0x60000000;
   scene.width = SCREEN_WIDTH;
   scene.height = SCREEN_HEIGHT;
@@ -328,7 +388,7 @@ void TEST_collideSquares(void) {
     // u8 ui8Flags = 0;
     // ui8Flags |= EVE_LOAD_IMG_POLLING;
     //ui8Flags |= EVE_LOAD_IMG_UDMA;
-    // EVE_LoadBitmap(&sBmpHandler, ui8Flags);
+    //EVE_LoadBitmap(&sBmpHandler, ui8Flags);
 	Gfx_render();
   }
 }

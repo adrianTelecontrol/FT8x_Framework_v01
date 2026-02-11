@@ -568,60 +568,62 @@ static uint32_t g_ulDummyRx;
 void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
                                 const uint32_t ui32Size,
                                 uint32_t ui32DestAddr) {
-    uint32_t ui32BytesSent = 0;
-    uint32_t ui32BytesRmd = 0;
-    uint32_t ui32CurrChunkSize = 0;
+  uint32_t ui32BytesSent = 0;
+  uint32_t ui32BytesRmd = 0;
+  uint32_t ui32CurrChunkSize = 0;
 
-    // 1. Start SPI Transaction
-    EVE_CS_LOW();
+  // 1. Start SPI Transaction
+  EVE_CS_LOW();
 
-    // 2. Send Address Header
-    EVE_AddrForWr(ui32DestAddr);
+  // 2. Send Address Header
+  EVE_AddrForWr(ui32DestAddr);
 
-    // 3. Loop: Stream DIRECTLY from SDRAM -> uDMA SPI
-    while (ui32BytesSent < ui32Size) {
+  // 3. Loop: Stream DIRECTLY from SDRAM -> uDMA SPI
+  while (ui32BytesSent < ui32Size) {
 
-        ui32BytesRmd = ui32Size - ui32BytesSent;
-        // uDMA hardware limit is 1024 items
-        ui32CurrChunkSize = (ui32BytesRmd > 1024) ? 1024 : ui32BytesRmd;
+    ui32BytesRmd = ui32Size - ui32BytesSent;
+    // uDMA hardware limit is 1024 items
+    ui32CurrChunkSize = (ui32BytesRmd > 1024) ? 1024 : ui32BytesRmd;
 
-        // --- CRITICAL FIX ---
-        // 1. Removed pui32Buffer (Fixes Stack Overflow)
-        // 2. Removed memcpy (Fixes SDRAM Burst/Grid issue)
-        // 3. Point uDMA source directly to SDRAM image data
-        display_SPI_uDMA_transfer(&pui8ImgSrc[ui32BytesSent], NULL, ui32CurrChunkSize);
+    // --- CRITICAL FIX ---
+    // 1. Removed pui32Buffer (Fixes Stack Overflow)
+    // 2. Removed memcpy (Fixes SDRAM Burst/Grid issue)
+    // 3. Point uDMA source directly to SDRAM image data
+    display_SPI_uDMA_transfer(&pui8ImgSrc[ui32BytesSent], NULL,
+                              ui32CurrChunkSize);
 
-        ui32BytesSent += ui32CurrChunkSize;
+    ui32BytesSent += ui32CurrChunkSize;
+  }
+
+  // 4. Handle Padding (Alignment to 4 bytes)
+  uint8_t ui8Padding = ui32Size % 4;
+  if (ui8Padding > 0) {
+    ui8Padding = 4 - ui8Padding;
+    while (ui8Padding > 0) {
+      EVE_Write8(0x00);
+      ui8Padding--;
     }
+  }
 
-    // 4. Handle Padding (Alignment to 4 bytes)
-    uint8_t ui8Padding = ui32Size % 4;
-    if (ui8Padding > 0) {
-        ui8Padding = 4 - ui8Padding;
-        while (ui8Padding > 0) {
-            EVE_Write8(0x00);
-            ui8Padding--;
-        }
-    }
+  // 5. Disable SPI Interrupts/Cleanup
+  SSIIntDisable(SSI3_BASE, SSI_TXFF | SSI_RXFF | SSI_RXOR | SSI_RXTO);
 
-    // 5. Disable SPI Interrupts/Cleanup
-    SSIIntDisable(SSI3_BASE, SSI_TXFF | SSI_RXFF | SSI_RXOR | SSI_RXTO);
+  uint32_t ui32Status = SSIIntStatus(SSI3_BASE, 1);
+  if (ui32Status & SSI_RXOR) {
+    SSIIntClear(SSI3_BASE, SSI_RXOR);
+  }
 
-    uint32_t ui32Status = SSIIntStatus(SSI3_BASE, 1);
-    if (ui32Status & SSI_RXOR) {
-        SSIIntClear(SSI3_BASE, SSI_RXOR);
-    }
+  uint32_t ui32Trash;
+  while (SSIDataGetNonBlocking(SSI3_BASE, &ui32Trash))
+    ;
 
-    uint32_t ui32Trash;
-    while (SSIDataGetNonBlocking(SSI3_BASE, &ui32Trash));
-
-    EVE_CS_HIGH();
+  EVE_CS_HIGH();
 }
 /*
-void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc, 
-                                uint32_t ui32Size, 
+void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
+                                uint32_t ui32Size,
                                 uint32_t ui32DestAddr) {
-    
+
     // 1. Start SPI Transaction
     EVE_CS_LOW();
 
@@ -715,6 +717,23 @@ void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
   EVE_CS_HIGH();
 }*/
 
+void API_LIB_WriteDataRAMG_ui32(const uint32_t *ImgData, uint32_t DataSize,
+                                uint32_t DestAddress) 
+{
+  EVE_CS_LOW();
+
+  // Send destination address (RAM_G + Offset)
+  EVE_AddrForWr(DestAddress);
+
+  uint32_t ui32Index = 0;
+  for (ui32Index = 0; ui32Index < DataSize; ui32Index++) 
+  {
+    EVE_Write32(*(ImgData++));
+  }
+
+  EVE_CS_HIGH();
+}
+
 void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
                            uint32_t DestAddress) {
   uint32_t DataPointer = 0;
@@ -725,7 +744,7 @@ void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
   EVE_AddrForWr(DestAddress);
 
   while ((DataSize - DataPointer) >= 4) {
-    uint32_t val32 = *(const uint32_t *)(ImgData + DataPointer);
+	uint32_t val32 = *(const uint32_t *)(ImgData + DataPointer);
 
     EVE_Write32(val32);
 

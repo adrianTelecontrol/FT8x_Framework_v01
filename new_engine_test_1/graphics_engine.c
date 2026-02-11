@@ -4,7 +4,11 @@
  */
 
 #include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
+
+#include <driverlib/sysctl.h>
 
 #include "EVE.h"
 #include "helpers.h"
@@ -45,8 +49,10 @@ bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight)
 
 void Gfx_loadIntoBuffer(uint32_t ui32Index, uint16_t ui16Pixel)
 {
-	if(ui32Index < g_sWorkingLayers[g_ui8WorkingLayer].ui32BuffSize)
-		g_sWorkingLayers[g_ui8WorkingLayer].psPixelBuffer[ui32Index].u16 = ui16Pixel; 
+	//if(ui32Index < g_sWorkingLayers[g_ui8WorkingLayer].ui32BuffSize)
+		g_sWorkingLayers[g_ui8WorkingLayer].psPixelBuffer[ui32Index].u16 = ui16Pixel;
+	//else
+	 	//TIVA_LOGE(TASK_NAME, "Buffer overflow!");
 }
 
 void Gfx_render(void)
@@ -57,24 +63,42 @@ void Gfx_render(void)
 	GfxLayer_t *gfxCurr = &g_sWorkingLayers[g_ui8WorkingLayer];
 
 	uint32_t ui32Index = 0;
-	for(ui32Index = 0; ui32Index < 1000; ui32Index++)
+
+	// Option 1. Sending All the frame
+	//API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxCurr->psPixelBuffer, gfxCurr->ui32BuffSize * 2, 0);
+
+	// Option 2. Updating in the G_RAM only the pixels that are different
+	for(ui32Index = 0; ui32Index < gfxPast->ui32BuffSize; ui32Index+=2)
 	{
-		pixel16_t ui16CurrVal = gfxCurr->psPixelBuffer[ui32Index];
-		pixel16_t ui16PastVal = gfxPast->psPixelBuffer[ui32Index];
-		if(ui16PastVal.u16 != ui16CurrVal.u16)
+		// uint16_t curVal = gfxCurr->psPixelBuffer[ui32Index].u16;
+		uint32_t ui32DoublePixel = *(uint32_t *)&gfxCurr->psPixelBuffer[ui32Index].u16;
+		uint32_t *pui32PastDoublePixel = (uint32_t *)&gfxPast->psPixelBuffer[ui32Index].u16;
+
+		//uint32_t ui32DoublePixel =  
+		//uint32_t *pui32PastDoublePixel = (uint32_t *)&gfxPast->psPixelBuffer[ui32Index].u16;
+
+		if(*pui32PastDoublePixel != ui32DoublePixel)
 		{
-			gfxPast[ui32Index].psPixelBuffer->u16 = ui16CurrVal.u16;
-			API_LIB_WriteDataRAMG(ui16CurrVal.u8, sizeof(uint16_t), RAM_G + ui32Index);
+			// gfxPast->psPixelBuffer[ui32Index].u16 = ui32DoublePixel;
+			*pui32PastDoublePixel = ui32DoublePixel;
+			API_LIB_WriteDataRAMG_ui32(&ui32DoublePixel, 1, RAM_G + (ui32Index * 2));
+			
+			//API_LIB_WriteDataRAMG_ui32(&ui32DoublePixel, 1, RAM_G + (ui32Index * 2));
+			//API_LIB_WriteDataRAMG(gfxCurr->psPixelBuffer[ui32Index].u8, sizeof(uint16_t), RAM_G + (ui32Index * 2));
+			//API_LIB_WriteDataRAMG(&gfxCurr->psPixelBuffer[ui32Index].u16, sizeof(uint16_t), RAM_G + (ui32Index * 2));
+			//SysCtlDelay(MS_2_CLK(1));
 		}
 	}
+
+	//API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxPast->psPixelBuffer, gfxPast->ui32BuffSize * 2, 0);
 
 	TIVA_LOGI(TASK_NAME, "Bitmap finished to load into RAM_G");
 
 	API_LIB_BeginCoProList();
 	API_CMD_DLSTART();
-	API_CLEAR_COLOR_RGB(11, 19, 30);
-	API_CLEAR(1, 1, 1);
-	API_COLOR_RGB(255, 255, 255);
+	//API_CLEAR_COLOR_RGB(0, 0, 0);
+	//API_CLEAR(1, 1, 1);
+	//API_COLOR_RGB(255, 255, 255);
 
 	API_BITMAP_HANDLE(0);
 	API_BITMAP_SOURCE(RAM_G);
@@ -123,4 +147,19 @@ void Gfx_render(void)
 	API_LIB_AwaitCoProEmpty();
 	
 	TIVA_LOGI(TASK_NAME, "Displaying bitmap!");
+
+	// Compare buffers
+	uint32_t diff = 0;
+	for(ui32Index = 0; ui32Index < gfxPast->ui32BuffSize; ui32Index++)
+	{
+		if(gfxPast->psPixelBuffer[ui32Index].u8 != gfxCurr->psPixelBuffer[ui32Index].u8)
+			diff++;
+	}
+
+	TIVA_LOGI(TASK_NAME, "Differences: %u", diff);
+
+
+	// Clear current buffer
+	memset(gfxCurr->psPixelBuffer, 0xFF, gfxCurr->ui32BuffSize * 2);
+	//memset(gfxPast->psPixelBuffer, 1, gfxCurr->ui32BuffSize * 2);
 }
