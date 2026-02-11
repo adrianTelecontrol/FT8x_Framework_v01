@@ -27,8 +27,8 @@
 #define C_LIME 0x87E0   // Original: 0xFF00FF80 (R=128, G=255, B=0)
 #define C_SKY_BLUE 0x867D
 
-#define SCREEN_WIDTH 800 / 4
-#define SCREEN_HEIGHT 480 / 4
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 480
 #endif
 
 typedef uint32_t u32;

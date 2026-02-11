@@ -734,6 +734,11 @@ void API_LIB_WriteDataRAMG_ui32(const uint32_t *ImgData, uint32_t DataSize,
   EVE_CS_HIGH();
 }
 
+void API_LIB_WriteDataRAMG_ui32_uDMA(const uint32_t *ImgData, uint32_t DataSize,
+                                uint32_t DestAddress) 
+{
+}
+
 void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
                            uint32_t DestAddress) {
   uint32_t DataPointer = 0;

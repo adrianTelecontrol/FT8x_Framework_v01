@@ -341,7 +341,7 @@ int main(void) {
       "\t\t-------------------------------------------------------------\n");
   TIVA_LOGI(TASK_NAME, "Starting application...");
 
-  Gfx_initEngine(LCD_WIDTH / 4, LCD_HEIGHT / 4);
+  Gfx_initEngine(LCD_WIDTH, LCD_HEIGHT);
 
   // Test if the SDRAM is working
 #ifdef ENABLE_SDRAM_TEST
