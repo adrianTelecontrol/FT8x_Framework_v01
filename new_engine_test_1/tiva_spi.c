@@ -27,18 +27,42 @@ extern uint8_t pui8ControlTable[1024];
 extern const uint32_t g_ui32SysClock;
 
 #define VERBOSE_LV1
+#define SPI_uDMA_USE_INTER
 
-void uDMAIntHandler(void) {
-  if (MAP_uDMAChannelModeGet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT) ==
-      UDMA_MODE_STOP) {
-    // Clear any pending interrupt flags (good practice, though DMA is distinct)
-    uint32_t ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
-    MAP_SSIIntClear(SSI3_BASE, ui32Status);
+static uint8_t g_dummyRxByte;
 
-    // Mark transaction as complete
+static const volatile uint8_t g_dummyTxZero = 0;
 
-    // Optional: Call a callback function here if you need to notify the App
-    // layer if(MyCallback) MyCallback();
+volatile bool g_bSPI_TransferDone = true;
+
+void SSI3IntHandler(void) {
+  uint32_t ui32Status;
+
+  // Read interrupt status
+  ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
+
+  // Clear the flags
+  MAP_SSIIntClear(SSI3_BASE, ui32Status);
+
+  // ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
+
+  // Check if it was a DMA finish
+  // (Note: Sometimes Tiva just fires the raw interrupt, checking mode is safer)
+  if ((MAP_uDMAChannelModeGet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT) ==
+       UDMA_MODE_STOP) &&
+      (MAP_uDMAChannelModeGet(UDMA_CH15_SSI3TX | UDMA_PRI_SELECT) ==
+       UDMA_MODE_STOP)) {
+    // Signal your main loop that the SPI bus is free
+    g_bSPI_TransferDone = true;
+
+    while (MAP_SSIBusy(SSI3_BASE))
+      ;
+
+    // SSIIntDisable(SSI3_BASE, SSI_TXFF | SSI_RXFF | SSI_RXOR | SSI_RXTO);
+    MAP_SSIIntDisable(SSI3_BASE, SSI_DMATX | SSI_DMARX);
+
+    MAP_uDMAChannelDisable(UDMA_CH14_SSI3RX);
+    MAP_uDMAChannelDisable(UDMA_CH15_SSI3TX);
   }
 }
 
@@ -54,20 +78,21 @@ uint8_t display_SPI_ReadWrite(uint16_t txData) {
   return (uint8_t)(ui32RxData & 0xFF);
 }
 
-// Helper for unused RX data
-static uint8_t g_dummyRxByte;
-
-// Helper for unused TX data (Sending Zeros)
-static const volatile uint8_t g_dummyTxZero = 0;
-
 bool display_SPI_uDMA_transfer(const uint8_t *pTxBuffer, uint8_t *pRxBuffer,
                                uint32_t count) {
   if (count == 0)
     return true;
 
+  // Clear flag
+  g_bSPI_TransferDone = false;
+
+  MAP_SSIIntDisable(SSI3_BASE, SSI_DMATX | SSI_DMARX);
+  MAP_SSIIntClear(SSI3_BASE, SSI_DMATX | SSI_DMARX | SSI_RXTO | SSI_RXOR);
+
   MAP_uDMAChannelDisable(UDMA_CH14_SSI3RX);
   MAP_uDMAChannelDisable(UDMA_CH15_SSI3TX);
 
+  MAP_SSIIntDisable(SSI3_BASE, SSI_RXFF | SSI_RXOR | SSI_RXTO | SSI_DMARX);
   MAP_SSIIntClear(SSI3_BASE, SSI_DMATX | SSI_DMARX | SSI_RXTO | SSI_RXOR);
 
   uint32_t garbage;
@@ -103,7 +128,16 @@ bool display_SPI_uDMA_transfer(const uint8_t *pTxBuffer, uint8_t *pRxBuffer,
   MAP_uDMAChannelEnable(UDMA_CH14_SSI3RX);
   MAP_uDMAChannelEnable(UDMA_CH15_SSI3TX);
 
+#ifdef SPI_uDMA_USE_INTER
+  //    We enable "DMA Transmit Complete" (DMATX) or "End of Transmission"
+  //    (EOT) Note: On some Tiva chips, DMATX is the correct flag for DMA
+  //    completion.
+  MAP_SSIIntEnable(SSI3_BASE, SSI_DMATX);
+
+#else
+
   // Blocking Wait
+
   while ((MAP_uDMAChannelModeGet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT) !=
           UDMA_MODE_STOP) ||
          (MAP_uDMAChannelModeGet(UDMA_CH15_SSI3TX | UDMA_PRI_SELECT) !=
@@ -117,15 +151,14 @@ bool display_SPI_uDMA_transfer(const uint8_t *pTxBuffer, uint8_t *pRxBuffer,
 
   MAP_uDMAChannelDisable(UDMA_CH14_SSI3RX);
   MAP_uDMAChannelDisable(UDMA_CH15_SSI3TX);
-
+#endif
   return true;
 }
-// Helper for unused RX data
-static uint32_t g_ulDummyRx;
 
 void EVE_SPI_uDMA_BurstWrite(const uint8_t *pui8Src, uint32_t ui32TotalBytes) {
   uint32_t ui32BytesSent = 0;
   uint32_t ui32TransferSize;
+  uint32_t g_ulDummyRx;
 
   // Clear any residual SSI status
   MAP_SSIIntClear(SSI3_BASE, SSI_DMATX | SSI_DMARX | SSI_RXTO | SSI_RXOR);
@@ -200,9 +233,6 @@ void uDMA_Init(void) {
   MAP_uDMAChannelAssign(UDMA_CH14_SSI3RX);
   MAP_uDMAChannelAssign(UDMA_CH15_SSI3TX);
 
-  uint_fast16_t ui16Idx;
-
-
   //
   // Configure CH14 SSI3 RX. First put the channel in a known state
   //
@@ -245,7 +275,8 @@ void SPI3_Init(void) {
   //
   // Enable interruptions at system level
   //
-  IntDisable(INT_SSI3);
+  // IntDisable(INT_SSI3);
+  IntEnable(INT_SSI3);
 
   SSIEnable(SSI3_BASE);
 }

@@ -53,7 +53,7 @@ extern void _c_int00(void);
 //*****************************************************************************
 extern void SysTickHandler(void);
 extern void UARTStdioIntHandler(void);
-// extern void SSI3IntHandler(void);
+extern void SSI3IntHandler(void);
 //*****************************************************************************
 //
 // Linker variable that marks the top of the stack.
@@ -143,7 +143,8 @@ void (* const g_pfnVectors[])(void) =
     IntDefaultHandler,                      // GPIO Port K
     IntDefaultHandler,                      // GPIO Port L
     IntDefaultHandler,                      // SSI2 Rx and Tx
-    IntDefaultHandler,                         // SSI3 Rx and Tx
+	SSI3IntHandler,                    // SSI3 Rx and Tx
+	//IntDefaultHandler,
     IntDefaultHandler,                      // UART3 Rx and Tx
     IntDefaultHandler,                      // UART4 Rx and Tx
     IntDefaultHandler,                      // UART5 Rx and Tx

@@ -63,7 +63,7 @@ typedef struct {
   vect2d pos;
 } SquareObject;
 
-static SquareObject squares[10];
+static SquareObject squares[1];
 const u16 SQUARE_OBJ_LEN = sizeof(squares) / sizeof(SquareObject);
 
 const u16 COLORS[] = {C_PURPLE, C_RED,    C_GREEN, C_BLUE, C_YELLOW,

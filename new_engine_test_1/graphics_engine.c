@@ -1,5 +1,5 @@
 /**
- *
+ * graphics_engine.c
  *
  */
 
@@ -73,8 +73,9 @@ void Gfx_render(void) {
 
   // Option 1. Sending All the frame
   // API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxCurr->psPixelBuffer,
-  // gfxCurr->ui32BuffSize * 2, 0);
+  //                            gfxCurr->ui32BuffSize * 2, 0);
 
+// #if 0
   uint32_t pixelIndexEnd = gfxPast->ui32BuffSize;
   /*/
     uint32_t *pPast32 = (uint32_t *)gfxPast->psPixelBuffer;
@@ -110,44 +111,35 @@ void Gfx_render(void) {
 
       EVE_CS_LOW();
       EVE_AddrForWr(RAM_G + ui32Start * 2);
-      // Send destination address (RAM_G + Offset)
       if (ui32Count < GFX_UDMA_BATCH_SIZE) {
-      //if (true) {
+      //if (false) {
         uint32_t ui32Index = ui32Start;
         uint32_t ui32IndexEnd = ui32Index + ui32Count;
-        // EVE_CS_LOW();
-        // EVE_AddrForWr(RAM_G + ui32Start * 2);
         for (; ui32Index < ui32IndexEnd; ui32Index++) {
           display_SPI_ReadWrite(gfxPast->psPixelBuffer[ui32Index].u8[0]);
           display_SPI_ReadWrite(gfxPast->psPixelBuffer[ui32Index].u8[1]);
         }
-
-        // EVE_CS_HIGH();
       } 
 	  else {
         // API_LIB_WriteDataRAMG_uDMA(gfxPast->psPixelBuffer[ui32Start].u8,
         //                            ui32Count * 2, RAM_G + (ui32Start * 2));
-		
 		uint32_t ui32TxCount = 0;
         while (ui32Count) {
           uint32_t ui32CurrChunkSize = (ui32Count > 512) ? 512 : ui32Count;
 
+		  while(!g_bSPI_TransferDone);
           display_SPI_uDMA_transfer(gfxPast->psPixelBuffer[ui32Start + ui32TxCount].u8, NULL,
                                     ui32CurrChunkSize * 2);
 		  ui32TxCount += ui32CurrChunkSize;
           ui32Count -= ui32CurrChunkSize;
         }
 
-        SSIIntDisable(SSI3_BASE, SSI_TXFF | SSI_RXFF | SSI_RXOR | SSI_RXTO);
+		while(!g_bSPI_TransferDone);
 
-        uint32_t ui32Status = SSIIntStatus(SSI3_BASE, 1);
-        if (ui32Status & SSI_RXOR) {
-          SSIIntClear(SSI3_BASE, SSI_RXOR);
-        }
-
+		// Important to keep, otherwise trash accumulates
         uint32_t ui32Trash;
         while (SSIDataGetNonBlocking(SSI3_BASE, &ui32Trash))
-          ;
+           ;
       }
       EVE_CS_HIGH();
       
@@ -157,6 +149,7 @@ void Gfx_render(void) {
     }
   }
 
+//#endif
   // API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxPast->psPixelBuffer,
   // gfxPast->ui32BuffSize * 2, 0);
 

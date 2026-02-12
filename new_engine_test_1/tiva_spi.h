@@ -64,6 +64,8 @@ inline void EVE_TURN_LED_OFF() {
   GPIOPinWrite(GPIO_PORTN_BASE, SPI_COMM_LED, LOW);
 }
 
+extern volatile bool g_bSPI_TransferDone;
+
 uint8_t display_SPI_ReadWrite(uint16_t txData);
 
 bool display_SPI_uDMA_transfer(const uint8_t *pTxBuffer,
