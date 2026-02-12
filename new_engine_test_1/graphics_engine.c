@@ -5,8 +5,10 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 
 #include <driverlib/sysctl.h>
 
@@ -22,11 +24,51 @@
 #define GFX_UDMA_BATCH_SIZE 64 // 4 * 8 bytes * 1024
 
 #define MEASURE_PERF_ENABLE
+// #define MEASURE_PERF_ENABLE_MS
+#define MEASURE_PERF_ENABLE_FPS  // It crashes still
 
 GfxLayer_t g_sWorkingLayers[GFX_WORKING_LAYERS];
 
 static uint8_t g_ui8WorkingLayer = GFX_WORKING_LAYER;
 static const char TASK_NAME[] = "GFX_ENGINE";
+
+void Helper_IntToFPSString(char *buffer, uint32_t whole, uint32_t frac) {
+  // 1. Convert Whole Part (Manual Itoa)
+  char *ptr = buffer;
+  uint32_t temp = whole;
+
+  // Handle 0 explicitly
+  if (temp == 0) {
+    *ptr++ = '0';
+  } else {
+    // Find the end
+    char *start = ptr;
+    while (temp > 0) {
+      *ptr++ = (temp % 10) + '0';
+      temp /= 10;
+    }
+    // Reverse string in place
+    char *end = ptr - 1;
+    while (start < end) {
+      char t = *start;
+      *start++ = *end;
+      *end-- = t;
+    }
+  }
+
+  // 2. Add Decimal Point
+  *ptr++ = '.';
+
+  // 3. Add Fractional Part (Single digit)
+  *ptr++ = (frac % 10) + '0';
+
+  // 4. Add Unit
+  *ptr++ = ' ';
+  *ptr++ = 'F';
+  *ptr++ = 'P';
+  *ptr++ = 'S';
+  *ptr++ = '\0'; // Null Terminator
+}
 
 bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight) {
   // Initialize working buffers
@@ -75,7 +117,7 @@ void Gfx_render(void) {
   // API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxCurr->psPixelBuffer,
   //                            gfxCurr->ui32BuffSize * 2, 0);
 
-// #if 0
+  // #if 0
   uint32_t pixelIndexEnd = gfxPast->ui32BuffSize;
   /*/
     uint32_t *pPast32 = (uint32_t *)gfxPast->psPixelBuffer;
@@ -112,46 +154,47 @@ void Gfx_render(void) {
       EVE_CS_LOW();
       EVE_AddrForWr(RAM_G + ui32Start * 2);
       if (ui32Count < GFX_UDMA_BATCH_SIZE) {
-      //if (false) {
+        // if (false) {
         uint32_t ui32Index = ui32Start;
         uint32_t ui32IndexEnd = ui32Index + ui32Count;
         for (; ui32Index < ui32IndexEnd; ui32Index++) {
           display_SPI_ReadWrite(gfxPast->psPixelBuffer[ui32Index].u8[0]);
           display_SPI_ReadWrite(gfxPast->psPixelBuffer[ui32Index].u8[1]);
         }
-      } 
-	  else {
+      } else {
         // API_LIB_WriteDataRAMG_uDMA(gfxPast->psPixelBuffer[ui32Start].u8,
         //                            ui32Count * 2, RAM_G + (ui32Start * 2));
-		uint32_t ui32TxCount = 0;
+        uint32_t ui32TxCount = 0;
         while (ui32Count) {
           uint32_t ui32CurrChunkSize = (ui32Count > 512) ? 512 : ui32Count;
 
-		  while(!g_bSPI_TransferDone);
-          display_SPI_uDMA_transfer(gfxPast->psPixelBuffer[ui32Start + ui32TxCount].u8, NULL,
-                                    ui32CurrChunkSize * 2);
-		  ui32TxCount += ui32CurrChunkSize;
+          while (!g_bSPI_TransferDone)
+            ;
+          display_SPI_uDMA_transfer(
+              gfxPast->psPixelBuffer[ui32Start + ui32TxCount].u8, NULL,
+              ui32CurrChunkSize * 2);
+          ui32TxCount += ui32CurrChunkSize;
           ui32Count -= ui32CurrChunkSize;
         }
 
-		while(!g_bSPI_TransferDone);
+        while (!g_bSPI_TransferDone)
+          ;
 
-		// Important to keep, otherwise trash accumulates
+        // Important to keep, otherwise trash accumulates
         uint32_t ui32Trash;
         while (SSIDataGetNonBlocking(SSI3_BASE, &ui32Trash))
-           ;
+          ;
       }
       EVE_CS_HIGH();
-      
 
     } else {
       pixelIndex++;
     }
   }
 
-//#endif
-  // API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxPast->psPixelBuffer,
-  // gfxPast->ui32BuffSize * 2, 0);
+  // #endif
+  //  API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxPast->psPixelBuffer,
+  //  gfxPast->ui32BuffSize * 2, 0);
 
   TIVA_LOGI(TASK_NAME, "Bitmap finished to load into RAM_G");
 
@@ -196,7 +239,41 @@ void Gfx_render(void) {
   API_VERTEX2II(0, 0, 0, 0);
   API_END();
 
+  API_CMD_LOADIDENTITY();
+  API_CMD_SETMATRIX();
+
 #ifdef MEASURE_PERF_ENABLE
+  uint32_t duration = DWTGetCycleCounter();
+  DWTDisableCycleCounter();
+
+  const uint32_t CLOCK_PERIOD = g_ui32SysClock / 1E6;
+  uint32_t us_whole = duration / CLOCK_PERIOD;
+  g_ui32ExecDurMs = us_whole / 1000;
+
+  if (g_ui32ExecDurMs > 0) {
+    uint32_t ui32FPS_x10 = 10000 / g_ui32ExecDurMs;
+    uint32_t ui32Whole = ui32FPS_x10 / 10;
+    uint32_t ui32Frac = ui32FPS_x10 % 10;
+
+    char cFPSBuffer[16];
+
+    // OLD: sprintf(cFPSBuffer, "%lu.%lu FPS", ui32Whole, ui32Frac);
+    // NEW: Lightweight helper (Uses almost 0 stack)
+    Helper_IntToFPSString(cFPSBuffer, ui32Whole, ui32Frac);
+
+    API_COLOR_RGB(255, 0, 0);
+
+    // Important: Ensure you reset the matrix first!
+    API_CMD_LOADIDENTITY();
+    API_CMD_SETMATRIX();
+
+    API_CMD_TEXT(u16DrawnWidth - 120, u16DrawnHeight - 50, 30, 0, cFPSBuffer);
+  }
+
+  API_CMD_SETBASE(10);
+#endif
+
+#ifdef MEASURE_PERF_ENABLE_MS // Print ms it takes to complete
   uint32_t duration = DWTGetCycleCounter();
   DWTDisableCycleCounter();
   const uint32_t CLOCK_PERIOD = g_ui32SysClock / 1E6;
