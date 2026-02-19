@@ -42,7 +42,6 @@
 
 extern uint8_t *pui8SrcBuff;
 extern uint8_t *pui8DstBuff;
-extern uint8_t pui8ControlTable[1024];
 
 inline void EVE_CS_LOW() { GPIOPinWrite(GPIO_PORTQ_BASE, SPI_DISP_CS, LOW); }
 inline void EVE_CS_HIGH() { GPIOPinWrite(GPIO_PORTQ_BASE, SPI_DISP_CS, HIGH); }
@@ -68,8 +67,6 @@ uint8_t display_SPI_ReadWrite(uint16_t txData);
 bool display_SPI_uDMA_transfer(const uint8_t *pTxBuffer,
                                     uint8_t *pRxBuffer,
                                     uint32_t count /*, bool bIsBlocking*/);
-
-void SPI_Start_SG_Transfer(const uint8_t *pBuffer);
 
 void SPI3_FT81x_HighSpeed(void);
 

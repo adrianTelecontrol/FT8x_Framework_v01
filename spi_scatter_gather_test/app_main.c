@@ -6,9 +6,10 @@
 #include <string.h>
 
 #include <inc/hw_epi.h>
+#include <inc/hw_ints.h>
 #include <inc/hw_memmap.h>
 #include <inc/hw_types.h>
-#include <inc/hw_ints.h>
+
 
 #include "driverlib/epi.h"
 #include "driverlib/gpio.h"
@@ -27,47 +28,19 @@
 #include "EVE.h"
 #include "EVE_colors.h"
 #include "FT8xx_params.h"
-#include "bitmap_parser.h"
-#include "bmp_wrapper.h"
-#include "ft81x_spi_test.h"
 #include "gfx.h"
+#include "graphics_engine.h"
 #include "helpers.h"
-// #include "image_loader.h"
-#include "image_wrapper.h"
-#include "sdram_hal.h"
-#include "sdspi_hal.h"
+#include "scatter_gather_test.h"
 #include "tiva_log.h"
 #include "tiva_spi.h"
-#include "graphics_engine.h"
 
-#include "draw_bitmap.h"
-
-// Define clock freq
 const uint32_t g_ui32SysClock = 120E6;
 
-//*****************************************************************************
-//
-// Set up the debug level of verbosity
-// LV_1 : Just basic log of the current state of the program: Initializers, etc
-// LV_2 : Most detailed execution, including states before and after steps
-//
-//*****************************************************************************
 #define DEBUG_LV_1
-// #define DEBUG_LV_2
 
-//*****************************************************************************
-//
-// Enable FT81x SPI communication test level
-//
-//*****************************************************************************
 #define FT81x_SPI_QUICK_TEST
-// #define FT81x_SPI_FULL_TEST
 
-//*****************************************************************************
-//
-// Use the following to specify the GPIO pins used by the SDRAM EPI bus.
-//
-//*****************************************************************************
 #define EPI_PORTA_PINS (GPIO_PIN_7 | GPIO_PIN_6)
 #define EPI_PORTB_PINS (GPIO_PIN_3 | GPIO_PIN_2)
 #define EPI_PORTC_PINS (GPIO_PIN_7 | GPIO_PIN_6 | GPIO_PIN_5 | GPIO_PIN_4)
@@ -81,21 +54,9 @@ const uint32_t g_ui32SysClock = 120E6;
 #define EPI_PORTP_PINS (GPIO_PIN_3 | GPIO_PIN_2)
 #define EPI_PORTQ_PINS (GPIO_PIN_3 | GPIO_PIN_2 | GPIO_PIN_1 | GPIO_PIN_0)
 
-//*****************************************************************************
-//
-// Use the following to specify the SDRAM location where the application will
-// be downloaded from the SDCARD
-//
-//*****************************************************************************
 #define SDRAM_APP_START_ADDRESS 0x60000000
 #define SDRAM_APP_END_ADDRESS 0x61FFFFFF
 
-//*****************************************************************************
-//
-// Enable SDRAM test to be executed before using it
-//
-//*****************************************************************************
-// #define ENABLE_SDRAM_TEST 1
 uint32_t g_ui32EveColors[] = {EVE_DARK_BLUE, EVE_GREEN, EVE_RED,
                               EVE_YELLOW,    EVE_PINK,  EVE_DEEP_PURPLE,
                               EVE_THEAL,     EVE_MAUVE};
@@ -110,24 +71,9 @@ const char *g_BMP_FILENAME = "TEST4.BMP";
 void __error__(char *pcFilename, uint32_t ui32Line) {}
 #endif
 
-//*****************************************************************************
-//
-// Configure the EPI and its pins.  This must be called before boot command is
-// invoked.
-//
-//*****************************************************************************
 int ConfigureEPI(void) {
-  //
-  // The EPI0 peripheral must be enabled for use.
-  //
   SysCtlPeripheralEnable(SYSCTL_PERIPH_EPI0);
 
-  //
-  // For this example EPI0 is used with multiple pins on PortA, B, C, G, H,
-  // K, L, M and N.  The actual port and pins used may be different on your
-  // part, consult the data sheet for more information.
-  // TODO: Update based upon the EPI pin assignment on your target part.
-  //
   SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
   SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
   SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
@@ -140,12 +86,6 @@ int ConfigureEPI(void) {
   SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOP);
   SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOQ);
 
-  //
-  // This step configures the internal pin muxes to set the EPI pins for use
-  // with EPI.  Please refer to the datasheet for more information about pin
-  // muxing.  Note that EPI0S27:20 are not used for the EPI SDRAM
-  // implementation.
-  //
   GPIOPinConfigure(GPIO_PH0_EPI0S0);
   GPIOPinConfigure(GPIO_PH1_EPI0S1);
   GPIOPinConfigure(GPIO_PH2_EPI0S2);
@@ -183,11 +123,6 @@ int ConfigureEPI(void) {
   GPIOPinConfigure(GPIO_PN4_EPI0S34);
   GPIOPinConfigure(GPIO_PN5_EPI0S35);
 
-  //
-  // Configure the GPIO pins for EPI mode.  All the EPI pins require 8mA
-  // drive strength in push-pull operation.  This step also gives control of
-  // pins to the EPI module.
-  //
   GPIOPinTypeEPI(GPIO_PORTA_BASE, EPI_PORTA_PINS);
   GPIOPinTypeEPI(GPIO_PORTB_BASE, EPI_PORTB_PINS);
   GPIOPinTypeEPI(GPIO_PORTC_BASE, EPI_PORTC_PINS);
@@ -215,50 +150,21 @@ int ConfigureEPI(void) {
   GPIOPadConfigSet(GPIO_PORTP_BASE, EPI_PORTP_PINS, ui32Strength, ui32PinType);
   GPIOPadConfigSet(GPIO_PORTQ_BASE, EPI_PORTQ_PINS, ui32Strength, ui32PinType);
 
-  //
-  // Set the EPI clock to half the system clock.
-  //
   EPIDividerSet(EPI0_BASE, 4);
 
-  //
-  // Sets the usage mode of the EPI module.  For this example we will use
-  // the SDRAM mode to talk to the external 64MB SDRAM daughter card.
-  //
   EPIModeSet(EPI0_BASE, EPI_MODE_SDRAM);
 
-  //
-  // Configure the SDRAM mode.  We configure the SDRAM according to our core
-  // clock frequency.  We will use the normal (or full power) operating
-  // state which means we will not use the low power self-refresh state.
-  // Set the SDRAM size to 64MB with a refresh interval of 468 clock ticks.
-  //
   // DO NOT CHANGE UI32REFRESH VALUE!!!!!!!!!!!!!!!!!!!
   EPIConfigSDRAMSet(EPI0_BASE,
                     (EPI_SDRAM_CORE_FREQ_15_30 | EPI_SDRAM_FULL_POWER |
                      EPI_SDRAM_SIZE_512MBIT),
                     234);
 
-  //
-  // Set the address map.  The EPI0 is mapped from 0x60000000 to 0x01FFFFFF.
-  // For this example, we will start from a base address of 0x60000000 with
-  // a size of 256MB.  Although our SDRAM is only 64MB, there is no 64MB
-  // aperture option so we pick the next larger size.
-  //
   EPIAddressMapSet(EPI0_BASE, EPI_ADDR_RAM_SIZE_256MB | EPI_ADDR_RAM_BASE_6);
 
-  //
-  // Wait for the SDRAM wake-up to complete by polling the SDRAM
-  // initialization sequence bit.  This bit is true when the SDRAM interface
-  // is going through the initialization and false when the SDRAM interface
-  // it is not in a wake-up period.
-  //
   while (HWREG(EPI0_BASE + EPI_O_STAT) & EPI_STAT_INITSEQ) {
   }
 
-  //
-  // Write to the first 2 and last 2 address of the SDRAM card.  Since the
-  // SDRAM card is word addressable, we will write words.
-  //
   HWREGH(SDRAM_APP_START_ADDRESS) = 0xabcd;
   HWREGH(SDRAM_APP_START_ADDRESS + 0x2) = 0x1234;
   HWREGH(SDRAM_APP_END_ADDRESS - 0x3) = 0xdcba;
@@ -268,14 +174,8 @@ int ConfigureEPI(void) {
       (HWREGH(SDRAM_APP_START_ADDRESS + 0x2) == 0x1234) &&
       (HWREGH(SDRAM_APP_END_ADDRESS - 0x3) == 0xdcba) &&
       (HWREGH(SDRAM_APP_END_ADDRESS - 0x1) == 0x4321)) {
-    //
-    // Read and write operations were successful.  Return with no errors.
-    //
     return (1);
   } else {
-    //
-    // Read and write operations were failure.  Return with error.
-    //
     return (0);
   }
 }
@@ -300,111 +200,100 @@ void ConfigureUART(void) {
   UARTStdioConfig(0, 115200, g_ui32SysClock);
 }
 
-void task01(void)
-{
-	TIVA_LOGI(TASK_NAME, "Task01 executing!");
-}
+void DisplayBitmap(void) {
+  uint16_t ui16Width = 100;
+  uint16_t ui16Height = 100;
+  TIVA_LOGI(TASK_NAME, "Bitmap finished to load into RAM_G");
 
-void task02(void)
-{
-	TIVA_LOGI(TASK_NAME, "Task02 executing!");
-}
+  API_LIB_BeginCoProList();
+  API_CMD_DLSTART();
+  API_CLEAR_COLOR_RGB(11, 19, 30);
+  API_CLEAR(1, 1, 1);
+  API_COLOR_RGB(255, 255, 255);
 
+  API_BITMAP_HANDLE(0);
+  API_BITMAP_SOURCE(RAM_G);
+  uint16_t BytesPerPixel = 1; // RGB565 is 2 bytes
+  // uint16_t ui16Stride = ((ui16Width * BytesPerPixel) + 3) & ~3;
+  uint16_t ui16Stride = ui16Width * BytesPerPixel;
+
+  // 1. Calculate Target Dimensions
+  uint8_t u8Scale = 4;
+  uint16_t u16DrawnWidth = ui16Width * u8Scale;
+  uint16_t u16DrawnHeight = ui16Height * u8Scale;
+
+  // 2. BITMAP_LAYOUT (Remains based on the SOURCE image size)
+  API_BITMAP_LAYOUT(RGB332, ui16Stride, ui16Height);
+  API_BITMAP_LAYOUT_H(ui16Stride >> 10, ui16Height >> 9);
+
+  // 3. BITMAP_SIZE (Update this to the NEW scaled size on screen)
+  //    We use NEAREST for clean integer scaling (pixel art look).
+  //    Use BILINEAR if you want it smoothed/blurry.
+  API_BITMAP_SIZE(NEAREST, BORDER, BORDER, u16DrawnWidth, u16DrawnHeight);
+  API_BITMAP_SIZE_H(u16DrawnWidth >> 9, u16DrawnHeight >> 9);
+
+  // 4. TRANSFORM MATRIX
+  //    We calculate the sampling step.
+  //    To make it 4x BIGGER, we step 0.25x per pixel.
+  //    16.16 Fixed Point: 65536 / 4 = 16384
+  int32_t s32ScaleFactor = 65536 * u8Scale;
+
+  API_CMD_LOADIDENTITY();
+  API_CMD_SCALE(s32ScaleFactor, s32ScaleFactor);
+  API_CMD_SETMATRIX();
+
+  // 5. Draw
+  API_BEGIN(BITMAPS);
+  API_VERTEX2II(0, 0, 0, 0);
+  API_END();
+
+#ifdef MEASURE_PERF_ENABLE
+  API_COLOR_RGB(255, 0, 0);
+  API_CMD_NUMBER(LCD_WIDTH - 100, LCD_HEIGHT - 50, 30, 0, g_ui32ExecDurMs);
+  // API_CMD_NUMBER(LCD_WIDTH / 2, LCD_HEIGHT / 2, 29, 0, g_ui32ExecDurMs);
+  API_CMD_SETBASE(10);
+#endif
+  API_DISPLAY();
+  API_CMD_SWAP();
+  API_LIB_EndCoProList();
+  API_LIB_AwaitCoProEmpty();
+}
 
 int main(void) {
 
   // Enable all the ports
   PinoutSet(false, false);
 
-  MAP_SysTickPeriodSet(g_ui32SysClock / 1000);
-  MAP_SysTickEnable();
-  MAP_SysTickIntEnable();
-
   // Configure the UART for system output
   ConfigureUART();
 
   MAP_IntMasterEnable();
-  // Initial message
-  UARTprintf("\n");
-  TIVA_LOGI(
-      TASK_NAME,
-      "\t\t-------------------------------------------------------------");
-  TIVA_LOGI(
-      TASK_NAME,
-      "\t\t---------------------STARTING APPLICATION--------------------");
-  TIVA_LOGI(
-      TASK_NAME,
-      "\t\t-------------------------------------------------------------\n");
   TIVA_LOGI(TASK_NAME, "Starting application...");
 
   Gfx_initEngine(LCD_WIDTH, LCD_HEIGHT);
-
-  // Test if the SDRAM is working
-#ifdef ENABLE_SDRAM_TEST
-  TIVA_LOGI(TASK_NAME, "Starting EPI SDRAM Verification");
-  uint32_t *pCheck = (uint32_t *)0x60000000;
-  *pCheck = 0xDEADBEEF;
-  if (*pCheck == 0xDEADBEEF) {
-    // Safe to use malloc now
-    TIVA_LOGI(TASK_NAME, "SDRAM verification correct!");
-  } else {
-    TIVA_LOGE(TASK_NAME,
-              "Failed initial SDRAM verification! Going into halt state.");
-    while (1) {
-    }
-  }
-  bool ret =
-      SDRAM_Test((uint32_t)SDRAM_APP_START_ADDRESS, (uint32_t)0x100, 0.5);
-  if (!ret) {
-    TIVA_LOGE(TASK_NAME,
-              "Failed extensive SDRAM verification! Going into halt state.");
-    while (1) {
-    }
-  }
-#endif // ENABLE_SDRAM_TEST
-
-  TIVA_LOGI(TASK_NAME, "Setting up Screen SPI...");
   init_SPI_screen();
-  TIVA_LOGI(TASK_NAME, "SPI set up successfully!");
-  TIVA_LOGI(TASK_NAME, "Initial FT81x state...");
-#ifdef DEBUG_LV_2
-  EVE_Util_DebugReport();
-#endif
   SysCtlDelay(MS_2_CLK(500));
-  TIVA_LOGI(TASK_NAME, "Awaking screen...");
   API_WakeUpScreen();
-  TIVA_LOGI(TASK_NAME, "Screen is awake!");
   SysCtlDelay(MS_2_CLK(1000));
-#ifdef FT81x_SPI_QUICK_TEST
-  TIVA_LOGI(TASK_NAME, "Running Quick FT81x SPI verification... ");
-  QuickSanityCheck();
-#endif // FT81x_SPI_QUICK_TEST
-#ifdef FT81x_SPI_FULL_TEST
-  TIVA_LOGI(TASK_NAME, "Running Full Ft81x SPI verification... ");
-  RunAllSPITests();
-#endif
-
-#ifdef DEBUG_LV_2
-  EVE_Util_DebugReport();
-#endif
   TIVA_LOGI(TASK_NAME, "Clearing the screen to 0x%x color", EVE_PINK);
   gfx_start(EVE_PINK);
   gfx_end();
   EVE_MemWrite8(REG_PWM_DUTY, 128);
-#ifdef DEBUG_LV_2
-  TIVA_LOGI(TASK_NAME, "FT81x State before loading the image\n");
-  EVE_Util_DebugReport();
-#endif
 
-  initializeSquaresPhysics(); // Initialize squares
+  // Initialize test
+  Init_Buffers();
+  Setup_SG_Transfer();
 
+  
   while (1) {
-	task01();
+	EVE_CS_LOW();
+    EVE_AddrForWr(RAM_G);
+    
+	SPI_Start_SG_Transfer();
+	while (!g_bSPI_TransferDone);
+	EVE_CS_HIGH();
+	DisplayBitmap();
 
-	drawSquares();
-
-	Gfx_render();
-	
-	task02();
+	SysCtlDelay(MS_2_CLK(100));
   }
 }

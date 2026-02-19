@@ -1,223 +1,240 @@
 /**
  * graphics_engine.c
  *
+ * Scatter-Gather Version - Chained Lists
+ * Implements >256KB "Fire and Forget" Rendering using Task Linking.
  */
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-
+#include <driverlib/rom_map.h>
 #include <driverlib/sysctl.h>
+#include <driverlib/udma.h>
+#include <inc/hw_memmap.h>
+#include <inc/hw_ssi.h>
+#include <inc/hw_types.h>
 
 #include "EVE.h"
+#include "graphics_engine.h"
 #include "helpers.h"
-
 #include "tiva_spi.h"
-#include <graphics_engine.h>
 
-#define GFX_WORKING_LAYERS 2
-#define GFX_WORKING_LAYER 0
-#define GFX_LAST_LAYER 1
-#define GFX_UDMA_BATCH_SIZE 64 // 4 * 8 bytes * 1024
+// --- CONFIGURATION ---
+#define GFX_WIDTH 800
+#define GFX_HEIGHT 480
+#define GFX_PIXELS_PER_FRAME (GFX_WIDTH * GFX_HEIGHT)
+#define GFX_BUFFER_SIZE_BYTES (GFX_PIXELS_PER_FRAME * 2) // 768,000 Bytes
 
-#define MEASURE_PERF_ENABLE
-// #define MEASURE_PERF_ENABLE_MS
-#define MEASURE_PERF_ENABLE_FPS  // It crashes still
+#define TRANSFER_SIZE 1024
 
-GfxLayer_t g_sWorkingLayers[GFX_WORKING_LAYERS];
+#define GFX_ENABLE_INT
 
-static uint8_t g_ui8WorkingLayer = GFX_WORKING_LAYER;
-static const char TASK_NAME[] = "GFX_ENGINE";
+// 768,000 / 1024 = 750 Total Tasks.
+// Split across 3 lists to bypass the 256 Hardware Limit.
+#define TASKS_LIST0 256 // 255 Data + 1 Link
+#define TASKS_LIST1 256 // 255 Data + 1 Link
+#define TASKS_LIST2 240 // 240 Data (Stops)
 
-void Helper_IntToFPSString(char *buffer, uint32_t whole, uint32_t frac) {
-  // 1. Convert Whole Part (Manual Itoa)
-  char *ptr = buffer;
-  uint32_t temp = whole;
+// --- GLOBALS ---
+pixel16_t *g_pBufferA;
+pixel16_t *g_pBufferB;
 
-  // Handle 0 explicitly
-  if (temp == 0) {
-    *ptr++ = '0';
-  } else {
-    // Find the end
-    char *start = ptr;
-    while (temp > 0) {
-      *ptr++ = (temp % 10) + '0';
-      temp /= 10;
-    }
-    // Reverse string in place
-    char *end = ptr - 1;
-    while (start < end) {
-      char t = *start;
-      *start++ = *end;
-      *end-- = t;
-    }
-  }
+pixel16_t *g_pDrawingBuffer;
+pixel16_t *g_pSendingBuffer;
 
-  // 2. Add Decimal Point
-  *ptr++ = '.';
+// Access the global DMA Control Table (Declared in your main/DMA init)
+extern uint8_t pui8ControlTable[1024];
+#define PRIMARY_CTRL_TABLE ((tDMAControlTable *)pui8ControlTable)
 
-  // 3. Add Fractional Part (Single digit)
-  *ptr++ = (frac % 10) + '0';
-
-  // 4. Add Unit
-  *ptr++ = ' ';
-  *ptr++ = 'F';
-  *ptr++ = 'P';
-  *ptr++ = 'S';
-  *ptr++ = '\0'; // Null Terminator
-}
-
-bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight) {
-  // Initialize working buffers
-  GfxLayer_t *gfx = &g_sWorkingLayers[GFX_WORKING_LAYER];
-  gfx->ui16Height = ui16ResHeight;
-  gfx->ui16Width = ui16ResWidth;
-  gfx->ui32BuffSize = ui16ResHeight * ui16ResWidth;
-  gfx->psPixelBuffer =
-      (pixel16_t *)malloc(sizeof(pixel16_t) * gfx->ui32BuffSize);
-
-  memset(gfx->psPixelBuffer, 0, gfx->ui32BuffSize * 2);
-
-  gfx = &g_sWorkingLayers[GFX_LAST_LAYER];
-  gfx->ui16Height = ui16ResHeight;
-  gfx->ui16Width = ui16ResWidth;
-  gfx->ui32BuffSize = ui16ResHeight * ui16ResWidth;
-  gfx->psPixelBuffer =
-      (pixel16_t *)malloc(sizeof(pixel16_t) * gfx->ui32BuffSize);
-  memset(gfx->psPixelBuffer, 1, gfx->ui32BuffSize * 2);
-
-  return true;
-}
-
-void Gfx_loadIntoBuffer(uint32_t ui32Index, uint16_t ui16Pixel) {
-  // if(ui32Index < g_sWorkingLayers[g_ui8WorkingLayer].ui32BuffSize)
-  g_sWorkingLayers[g_ui8WorkingLayer].psPixelBuffer[ui32Index].u16 = ui16Pixel;
-  // else
-  // TIVA_LOGE(TASK_NAME, "Buffer overflow!");
-}
-
-void Gfx_render(void) {
-  uint8_t ui8PastLayer = GFX_LAST_LAYER;
-
-#ifdef MEASURE_PERF_ENABLE
-  DWTInitCycleCounter();
-  DWTResetCycleCounter();
-  DWTEnableCycleCounter();
+// The 3 Chained Task Lists
+#if defined(__ICCARM__)
+#pragma data_alignment = 1024
+#elif defined(__TI_COMPILER_VERSION__)
+#pragma DATA_ALIGN(g_txList0, 1024)
+#pragma DATA_ALIGN(g_rxList0, 1024)
+// ... (Align the rest if TI compiler)
 #endif
+static tDMAControlTable g_txList0[TASKS_LIST0] __attribute__((aligned(1024)));
+static tDMAControlTable g_rxList0[TASKS_LIST0] __attribute__((aligned(1024)));
+static tDMAControlTable g_txList1[TASKS_LIST1] __attribute__((aligned(1024)));
+static tDMAControlTable g_rxList1[TASKS_LIST1] __attribute__((aligned(1024)));
+static tDMAControlTable g_txList2[TASKS_LIST2] __attribute__((aligned(1024)));
+static tDMAControlTable g_rxList2[TASKS_LIST2] __attribute__((aligned(1024)));
 
-  GfxLayer_t *gfxPast = &g_sWorkingLayers[ui8PastLayer];
-  GfxLayer_t *gfxCurr = &g_sWorkingLayers[g_ui8WorkingLayer];
+// Link Structures (Used to reprogram the DMA on the fly)
+static tDMAControlTable txLink1, txLink2;
+static tDMAControlTable rxLink1, rxLink2;
+static uint32_t g_ulDummyRx;
 
-  uint32_t pixelIndex = 0;
+volatile bool g_bGFX_TransferActive = false;
 
-  // Option 1. Sending All the frame
-  // API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxCurr->psPixelBuffer,
-  //                            gfxCurr->ui32BuffSize * 2, 0);
+// --- INTERRUPT HANDLER
+void SSI3IntHandler(void) {
+  // 1. Read and clear the interrupt status
+  uint32_t ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
+  MAP_SSIIntClear(SSI3_BASE, ui32Status);
 
-  // #if 0
-  uint32_t pixelIndexEnd = gfxPast->ui32BuffSize;
-  /*/
-    uint32_t *pPast32 = (uint32_t *)gfxPast->psPixelBuffer;
-    uint32_t *pCurr32 = (uint32_t *)gfxCurr->psPixelBuffer;
-  */
-  while (pixelIndex < pixelIndexEnd) {
-    // uint32_t ui32ValNew = pCurr32[pixelIndex];
+  // 2. Check if this interrupt is because the DMA transfer finished
+  if (g_bGFX_TransferActive && !MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
 
-    if (gfxPast->psPixelBuffer[pixelIndex].u16 !=
-        gfxCurr->psPixelBuffer[pixelIndex].u16) {
-      // Count how many differences thera are
-      uint32_t ui32Start = pixelIndex;
-      uint32_t ui32Count = 0;
+    // Wait for the final few bits to shift out of the SPI hardware
+    while (MAP_SSIBusy(SSI3_BASE))
+      ;
 
-      gfxPast->psPixelBuffer[pixelIndex].u16 =
-          gfxCurr->psPixelBuffer[pixelIndex].u16;
-      ui32Count++;
-      pixelIndex++;
+    // CRITICAL: Close the EVE SPI transaction!
+    EVE_CS_HIGH();
 
-      // Search for more changes
-      while ((pixelIndex < pixelIndexEnd) &&
-             (gfxPast->psPixelBuffer[pixelIndex].u16 !=
-              gfxCurr->psPixelBuffer[pixelIndex].u16)) {
-        gfxPast->psPixelBuffer[pixelIndex].u16 =
-            gfxCurr->psPixelBuffer[pixelIndex].u16;
-        ui32Count++;
-        pixelIndex++;
+    // Clean up DMA and disable this interrupt until the next frame
+    MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+    MAP_SSIIntDisable(SSI3_BASE, SSI_TXFF);
 
-        // If it a limit, send the batch and continue serching
-        // if (ui32Count > GFX_UDMA_BATCH_SIZE)
-        //  break;
-      }
-
-      EVE_CS_LOW();
-      EVE_AddrForWr(RAM_G + ui32Start * 2);
-      if (ui32Count < GFX_UDMA_BATCH_SIZE) {
-        // if (false) {
-        uint32_t ui32Index = ui32Start;
-        uint32_t ui32IndexEnd = ui32Index + ui32Count;
-        for (; ui32Index < ui32IndexEnd; ui32Index++) {
-          display_SPI_ReadWrite(gfxPast->psPixelBuffer[ui32Index].u8[0]);
-          display_SPI_ReadWrite(gfxPast->psPixelBuffer[ui32Index].u8[1]);
-        }
-      } else {
-        // API_LIB_WriteDataRAMG_uDMA(gfxPast->psPixelBuffer[ui32Start].u8,
-        //                            ui32Count * 2, RAM_G + (ui32Start * 2));
-        uint32_t ui32TxCount = 0;
-        while (ui32Count) {
-          uint32_t ui32CurrChunkSize = (ui32Count > 512) ? 512 : ui32Count;
-
-          while (!g_bSPI_TransferDone)
-            ;
-          display_SPI_uDMA_transfer(
-              gfxPast->psPixelBuffer[ui32Start + ui32TxCount].u8, NULL,
-              ui32CurrChunkSize * 2);
-          ui32TxCount += ui32CurrChunkSize;
-          ui32Count -= ui32CurrChunkSize;
-        }
-
-        while (!g_bSPI_TransferDone)
-          ;
-
-        // Important to keep, otherwise trash accumulates
-        uint32_t ui32Trash;
-        while (SSIDataGetNonBlocking(SSI3_BASE, &ui32Trash))
-          ;
-      }
-      EVE_CS_HIGH();
-
-    } else {
-      pixelIndex++;
-    }
+    // Signal to the CPU that the DMA is free!
+    g_bGFX_TransferActive = false;
   }
 
-  // #endif
-  //  API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxPast->psPixelBuffer,
-  //  gfxPast->ui32BuffSize * 2, 0);
+  // Safety catch for RX Overruns
+  if (ui32Status & SSI_RXOR) {
+    MAP_SSIIntClear(SSI3_BASE, SSI_RXOR);
+  }
+}
 
-  TIVA_LOGI(TASK_NAME, "Bitmap finished to load into RAM_G");
+// --- BUILDER FUNCTION ---
+
+void Gfx_BuildSG_For_Buffer(uint8_t *pBuffer) {
+  uint8_t *pSrc = pBuffer;
+  int i;
+
+  // ------------------------------------------------------------------------
+  // STEP 1: CALCULATE LINK STRUCTURES
+  // ------------------------------------------------------------------------
+  // We temporarily assign List 1 and 2 to the channels just so the TI Driverlib
+  // calculates the exact 'Primary Control Structure' bits for us.
+  // We snapshot those configurations into our txLink/rxLink variables.
+
+  // Calculate Link 2 (Points to List 2)
+  MAP_uDMAChannelScatterGatherSet(UDMA_CH15_SSI3TX, TASKS_LIST2, g_txList2, 1);
+  txLink2 = PRIMARY_CTRL_TABLE[15 & 0x1F]; // Grab TX Primary Struct
+  MAP_uDMAChannelScatterGatherSet(UDMA_CH14_SSI3RX, TASKS_LIST2, g_rxList2, 1);
+  rxLink2 = PRIMARY_CTRL_TABLE[14 & 0x1F]; // Grab RX Primary Struct
+
+  // Calculate Link 1 (Points to List 1)
+  MAP_uDMAChannelScatterGatherSet(UDMA_CH15_SSI3TX, TASKS_LIST1, g_txList1, 1);
+  txLink1 = PRIMARY_CTRL_TABLE[15 & 0x1F];
+  MAP_uDMAChannelScatterGatherSet(UDMA_CH14_SSI3RX, TASKS_LIST1, g_rxList1, 1);
+  rxLink1 = PRIMARY_CTRL_TABLE[14 & 0x1F];
+
+  // ------------------------------------------------------------------------
+  // STEP 2: POPULATE LIST 0 (255 SPI Tasks + 1 Link Task)
+  // ------------------------------------------------------------------------
+  for (i = 0; i < TASKS_LIST0 - 1; i++) {
+    g_txList0[i] = (tDMAControlTable)uDMATaskStructEntry(
+        TRANSFER_SIZE, UDMA_SIZE_8, UDMA_SRC_INC_8, pSrc, UDMA_DST_INC_NONE,
+        (void *)(SSI3_BASE + SSI_O_DR), UDMA_ARB_4,
+        UDMA_MODE_PER_SCATTER_GATHER);
+    g_rxList0[i] = (tDMAControlTable)uDMATaskStructEntry(
+        TRANSFER_SIZE, UDMA_SIZE_8, UDMA_SRC_INC_NONE,
+        (void *)(SSI3_BASE + SSI_O_DR), UDMA_DST_INC_NONE, &g_ulDummyRx,
+        UDMA_ARB_4, UDMA_MODE_PER_SCATTER_GATHER);
+    pSrc += TRANSFER_SIZE;
+  }
+  // Task 255 (The Link): 4-word copy into the Primary Control Structure
+  // Mode is PER_SCATTER_GATHER to force the uDMA to fetch the newly loaded
+  // list!
+  g_txList0[TASKS_LIST0 - 1] = (tDMAControlTable)uDMATaskStructEntry(
+      4, UDMA_SIZE_32, UDMA_SRC_INC_32, &txLink1, UDMA_DST_INC_32,
+      &PRIMARY_CTRL_TABLE[15], UDMA_ARB_4, UDMA_MODE_PER_SCATTER_GATHER);
+  g_rxList0[TASKS_LIST0 - 1] = (tDMAControlTable)uDMATaskStructEntry(
+      4, UDMA_SIZE_32, UDMA_SRC_INC_32, &rxLink1, UDMA_DST_INC_32,
+      &PRIMARY_CTRL_TABLE[14], UDMA_ARB_4, UDMA_MODE_PER_SCATTER_GATHER);
+
+  // ------------------------------------------------------------------------
+  // STEP 3: POPULATE LIST 1 (255 SPI Tasks + 1 Link Task)
+  // ------------------------------------------------------------------------
+  for (i = 0; i < TASKS_LIST1 - 1; i++) {
+    g_txList1[i] = (tDMAControlTable)uDMATaskStructEntry(
+        TRANSFER_SIZE, UDMA_SIZE_8, UDMA_SRC_INC_8, pSrc, UDMA_DST_INC_NONE,
+        (void *)(SSI3_BASE + SSI_O_DR), UDMA_ARB_4,
+        UDMA_MODE_PER_SCATTER_GATHER);
+    g_rxList1[i] = (tDMAControlTable)uDMATaskStructEntry(
+        TRANSFER_SIZE, UDMA_SIZE_8, UDMA_SRC_INC_NONE,
+        (void *)(SSI3_BASE + SSI_O_DR), UDMA_DST_INC_NONE, &g_ulDummyRx,
+        UDMA_ARB_4, UDMA_MODE_PER_SCATTER_GATHER);
+    pSrc += TRANSFER_SIZE;
+  }
+  // Task 255 (The Link): 4-word copy into the Primary Control Structure
+  g_txList1[TASKS_LIST1 - 1] = (tDMAControlTable)uDMATaskStructEntry(
+      4, UDMA_SIZE_32, UDMA_SRC_INC_32, &txLink2, UDMA_DST_INC_32,
+      &PRIMARY_CTRL_TABLE[15], UDMA_ARB_4, UDMA_MODE_PER_SCATTER_GATHER);
+  g_rxList1[TASKS_LIST1 - 1] = (tDMAControlTable)uDMATaskStructEntry(
+      4, UDMA_SIZE_32, UDMA_SRC_INC_32, &rxLink2, UDMA_DST_INC_32,
+      &PRIMARY_CTRL_TABLE[14], UDMA_ARB_4, UDMA_MODE_PER_SCATTER_GATHER);
+
+  // ------------------------------------------------------------------------
+  // STEP 4: POPULATE LIST 2 (240 SPI Tasks -> END)
+  // ------------------------------------------------------------------------
+  for (i = 0; i < TASKS_LIST2; i++) {
+    // Only the absolute final task in the entire chain gets UDMA_MODE_BASIC
+    uint32_t mode =
+        (i == TASKS_LIST2 - 1) ? UDMA_MODE_BASIC : UDMA_MODE_PER_SCATTER_GATHER;
+
+    g_txList2[i] = (tDMAControlTable)uDMATaskStructEntry(
+        TRANSFER_SIZE, UDMA_SIZE_8, UDMA_SRC_INC_8, pSrc, UDMA_DST_INC_NONE,
+        (void *)(SSI3_BASE + SSI_O_DR), UDMA_ARB_4, mode);
+    g_rxList2[i] = (tDMAControlTable)uDMATaskStructEntry(
+        TRANSFER_SIZE, UDMA_SIZE_8, UDMA_SRC_INC_NONE,
+        (void *)(SSI3_BASE + SSI_O_DR), UDMA_DST_INC_NONE, &g_ulDummyRx,
+        UDMA_ARB_4, mode);
+    pSrc += TRANSFER_SIZE;
+  }
+
+  // ------------------------------------------------------------------------
+  // STEP 5: ARM LIST 0
+  // ------------------------------------------------------------------------
+  // Now that everything is built and linked, set the hardware to start at List
+  // 0!
+  MAP_uDMAChannelScatterGatherSet(UDMA_CH15_SSI3TX, TASKS_LIST0, g_txList0, 1);
+  MAP_uDMAChannelScatterGatherSet(UDMA_CH14_SSI3RX, TASKS_LIST0, g_rxList0, 1);
+}
+
+// --- ENGINE EXECUTION ---
+// --- ENGINE FUNCTIONS ---
+void Gfx_loadIntoBuffer(uint32_t ui32Index, uint16_t ui16Pixel) {
+
+  // Unsafe fast write to External RAM
+
+  // (We skip bounds check for max performance in the render loop)
+
+  g_pDrawingBuffer[ui32Index].u16 = ui16Pixel;
+}
+
+void DisplayBitmap(void) {
+  uint16_t ui16Width = 800;
+  uint16_t ui16Height = 480;
+  // TIVA_LOGI(TASK_NAME, "Bitmap finished to load into RAM_G");
 
   API_LIB_BeginCoProList();
   API_CMD_DLSTART();
-  // API_CLEAR_COLOR_RGB(0, 0, 0);
-  // API_CLEAR(1, 1, 1);
-  // API_COLOR_RGB(255, 255, 255);
+  API_CLEAR_COLOR_RGB(11, 19, 30);
+  API_CLEAR(1, 1, 1);
+  API_COLOR_RGB(255, 255, 255);
 
   API_BITMAP_HANDLE(0);
   API_BITMAP_SOURCE(RAM_G);
   uint16_t BytesPerPixel = 2; // RGB565 is 2 bytes
   // uint16_t ui16Stride = ((ui16Width * BytesPerPixel) + 3) & ~3;
-  uint16_t ui16Stride = gfxPast->ui16Width * BytesPerPixel;
+  uint16_t ui16Stride = ui16Width * BytesPerPixel;
 
   // 1. Calculate Target Dimensions
   uint8_t u8Scale = 1;
-  uint16_t u16DrawnWidth = gfxPast->ui16Width * u8Scale;
-  uint16_t u16DrawnHeight = gfxPast->ui16Height * u8Scale;
+  uint16_t u16DrawnWidth = ui16Width * u8Scale;
+  uint16_t u16DrawnHeight = ui16Height * u8Scale;
 
   // 2. BITMAP_LAYOUT (Remains based on the SOURCE image size)
-  API_BITMAP_LAYOUT(RGB565, ui16Stride, gfxPast->ui16Height);
-  API_BITMAP_LAYOUT_H(ui16Stride >> 10, gfxPast->ui16Height >> 9);
+  API_BITMAP_LAYOUT(RGB565, ui16Stride, ui16Height);
+  API_BITMAP_LAYOUT_H(ui16Stride >> 10, ui16Height >> 9);
 
   // 3. BITMAP_SIZE (Update this to the NEW scaled size on screen)
   //    We use NEAREST for clean integer scaling (pixel art look).
@@ -235,55 +252,14 @@ void Gfx_render(void) {
   API_CMD_SCALE(s32ScaleFactor, s32ScaleFactor);
   API_CMD_SETMATRIX();
 
+  // 5. Draw
   API_BEGIN(BITMAPS);
   API_VERTEX2II(0, 0, 0, 0);
   API_END();
 
-  API_CMD_LOADIDENTITY();
-  API_CMD_SETMATRIX();
-
 #ifdef MEASURE_PERF_ENABLE
-  uint32_t duration = DWTGetCycleCounter();
-  DWTDisableCycleCounter();
-
-  const uint32_t CLOCK_PERIOD = g_ui32SysClock / 1E6;
-  uint32_t us_whole = duration / CLOCK_PERIOD;
-  g_ui32ExecDurMs = us_whole / 1000;
-
-  if (g_ui32ExecDurMs > 0) {
-    uint32_t ui32FPS_x10 = 10000 / g_ui32ExecDurMs;
-    uint32_t ui32Whole = ui32FPS_x10 / 10;
-    uint32_t ui32Frac = ui32FPS_x10 % 10;
-
-    char cFPSBuffer[16];
-
-    // OLD: sprintf(cFPSBuffer, "%lu.%lu FPS", ui32Whole, ui32Frac);
-    // NEW: Lightweight helper (Uses almost 0 stack)
-    Helper_IntToFPSString(cFPSBuffer, ui32Whole, ui32Frac);
-
-    API_COLOR_RGB(255, 0, 0);
-
-    // Important: Ensure you reset the matrix first!
-    API_CMD_LOADIDENTITY();
-    API_CMD_SETMATRIX();
-
-    API_CMD_TEXT(u16DrawnWidth - 120, u16DrawnHeight - 50, 30, 0, cFPSBuffer);
-  }
-
-  API_CMD_SETBASE(10);
-#endif
-
-#ifdef MEASURE_PERF_ENABLE_MS // Print ms it takes to complete
-  uint32_t duration = DWTGetCycleCounter();
-  DWTDisableCycleCounter();
-  const uint32_t CLOCK_PERIOD = g_ui32SysClock / 1E6;
-  uint32_t us_whole = duration / CLOCK_PERIOD;
-  // uint32_t us_frac =
-  //     (duration % CLOCK_PERIOD) * 100 / CLOCK_PERIOD; /* 2 decimal places */
-  g_ui32ExecDurMs = us_whole / 1000;
   API_COLOR_RGB(255, 0, 0);
-  API_CMD_NUMBER(u16DrawnWidth - 100, u16DrawnHeight - 50, 30, 0,
-                 g_ui32ExecDurMs);
+  API_CMD_NUMBER(LCD_WIDTH - 100, LCD_HEIGHT - 50, 30, 0, g_ui32ExecDurMs);
   // API_CMD_NUMBER(LCD_WIDTH / 2, LCD_HEIGHT / 2, 29, 0, g_ui32ExecDurMs);
   API_CMD_SETBASE(10);
 #endif
@@ -291,106 +267,88 @@ void Gfx_render(void) {
   API_CMD_SWAP();
   API_LIB_EndCoProList();
   API_LIB_AwaitCoProEmpty();
-
-  TIVA_LOGI(TASK_NAME, "Displaying bitmap!");
-
-  // Clear current buffer
-  memset(gfxCurr->psPixelBuffer, 0x00, gfxCurr->ui32BuffSize * 2);
-  // memset(gfxPast->psPixelBuffer, 1, gfxCurr->ui32BuffSize * 2);
 }
 
-/*
-void Gfx_render(void)
-{
-        uint8_t ui8PastLayer = GFX_LAST_LAYER;
+void Gfx_Start_SG_Transfer(void) {
 
-        GfxLayer_t *gfxPast = &g_sWorkingLayers[ui8PastLayer];
-        GfxLayer_t *gfxCurr = &g_sWorkingLayers[g_ui8WorkingLayer];
+  // Mark transfer as active
+  g_bGFX_TransferActive = true;
 
-        uint32_t ui32Index = 0;
+  MAP_uDMAErrorStatusClear();
+  MAP_SSIIntDisable(SSI3_BASE,
+                    SSI_DMATX | SSI_DMARX | SSI_RXFF | SSI_RXOR | SSI_RXTO);
+  MAP_SSIIntClear(SSI3_BASE,
+                  SSI_DMATX | SSI_DMARX | SSI_RXFF | SSI_RXOR | SSI_RXTO);
 
-        // Option 1. Sending All the frame
-        //API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxCurr->psPixelBuffer,
-gfxCurr->ui32BuffSize * 2, 0);
+  uint32_t trash;
+  while (MAP_SSIDataGetNonBlocking(SSI3_BASE, &trash))
+    ;
+  MAP_SSIIntClear(SSI3_BASE, SSI_RXOR | SSI_RXTO);
 
-        // Option 2. Updating in the G_RAM only the pixels that are different
-        for(ui32Index = 0; ui32Index < gfxPast->ui32BuffSize; ui32Index+=2)
-        {
-                uint32_t ui32DoublePixel = *(uint32_t
-*)&gfxCurr->psPixelBuffer[ui32Index].u16; uint32_t *pui32PastDoublePixel =
-(uint32_t *)&gfxPast->psPixelBuffer[ui32Index].u16;
-
-                if(*pui32PastDoublePixel != ui32DoublePixel)
-                {
-                        *pui32PastDoublePixel = ui32DoublePixel;
-                        API_LIB_WriteDataRAMG_ui32(&ui32DoublePixel, 1, RAM_G +
-(ui32Index * 2));
-                }
-        }
-
-        //API_LIB_WriteDataRAMG_uDMA((uint8_t *)gfxPast->psPixelBuffer,
-gfxPast->ui32BuffSize * 2, 0);
-
-        TIVA_LOGI(TASK_NAME, "Bitmap finished to load into RAM_G");
-
-        API_LIB_BeginCoProList();
-        API_CMD_DLSTART();
-        // API_CLEAR_COLOR_RGB(0, 0, 0);
-        // API_CLEAR(1, 1, 1);
-        // API_COLOR_RGB(255, 255, 255);
-
-        API_BITMAP_HANDLE(0);
-        API_BITMAP_SOURCE(RAM_G);
-        uint16_t BytesPerPixel = 2; // RGB565 is 2 bytes
-    //uint16_t ui16Stride = ((ui16Width * BytesPerPixel) + 3) & ~3;
-    uint16_t ui16Stride = gfxPast->ui16Width * BytesPerPixel;
-
-    // 1. Calculate Target Dimensions
-    uint8_t u8Scale = 1;
-    uint16_t u16DrawnWidth = gfxPast->ui16Width * u8Scale;
-    uint16_t u16DrawnHeight = gfxPast->ui16Height * u8Scale;
-
-    // 2. BITMAP_LAYOUT (Remains based on the SOURCE image size)
-    API_BITMAP_LAYOUT(RGB565, ui16Stride, gfxPast->ui16Height);
-    API_BITMAP_LAYOUT_H(ui16Stride >> 10, gfxPast->ui16Height >> 9);
-
-    // 3. BITMAP_SIZE (Update this to the NEW scaled size on screen)
-    //    We use NEAREST for clean integer scaling (pixel art look).
-    //    Use BILINEAR if you want it smoothed/blurry.
-    API_BITMAP_SIZE(NEAREST, BORDER, BORDER, u16DrawnWidth, u16DrawnHeight);
-    API_BITMAP_SIZE_H(u16DrawnWidth >> 9, u16DrawnHeight >> 9);
-
-    // 4. TRANSFORM MATRIX
-    //    We calculate the sampling step.
-    //    To make it 4x BIGGER, we step 0.25x per pixel.
-    //    16.16 Fixed Point: 65536 / 4 = 16384
-    int32_t s32ScaleFactor = 65536 * u8Scale;
-
-    API_CMD_LOADIDENTITY();
-    API_CMD_SCALE(s32ScaleFactor, s32ScaleFactor);
-    API_CMD_SETMATRIX();
-
-    API_BEGIN(BITMAPS);
-    API_VERTEX2II(0, 0, 0, 0);
-    API_END();
-
-#ifdef MEASURE_PERF_ENABLE
-        API_COLOR_RGB(255, 0, 0);
-        API_CMD_NUMBER(LCD_WIDTH - 100, LCD_HEIGHT - 50, 30, 0,
-g_ui32ExecDurMs);
-        //API_CMD_NUMBER(LCD_WIDTH / 2, LCD_HEIGHT / 2, 29, 0, g_ui32ExecDurMs);
-        API_CMD_SETBASE(10);
+  MAP_uDMAChannelEnable(UDMA_CH14_SSI3RX);
+  MAP_uDMAChannelEnable(UDMA_CH15_SSI3TX);
+  MAP_SSIDMAEnable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+#ifdef GFX_ENABLE_INT
+  MAP_SSIIntEnable(SSI3_BASE, SSI_DMATX);
 #endif
-        API_DISPLAY();
-        API_CMD_SWAP();
-        API_LIB_EndCoProList();
-        API_LIB_AwaitCoProEmpty();
+  // Trigger List 0. It will automatically chain to List 1, then List 2!
+  MAP_uDMAChannelRequest(UDMA_CH15_SSI3TX);
 
-        TIVA_LOGI(TASK_NAME, "Displaying bitmap!");
+#ifndef GFX_ENABLE_INT
+  while (MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
+    if (HWREG(SSI3_BASE + SSI_O_RIS) & SSI_RIS_RORRIS) {
+      HWREG(SSI3_BASE + SSI_O_ICR) = SSI_ICR_RORIC;
+    }
+  }
+  while (MAP_SSIBusy(SSI3_BASE))
+    ;
 
-
-        // Clear current buffer
-        memset(gfxCurr->psPixelBuffer, 0x00, gfxCurr->ui32BuffSize * 2);
-        //memset(gfxPast->psPixelBuffer, 1, gfxCurr->ui32BuffSize * 2);
+  MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+#endif
 }
-*/
+
+bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight) {
+  g_pBufferA = (pixel16_t *)malloc(GFX_BUFFER_SIZE_BYTES);
+  g_pBufferB = (pixel16_t *)malloc(GFX_BUFFER_SIZE_BYTES);
+
+  if (!g_pBufferA || !g_pBufferB)
+    return false;
+
+  memset(g_pBufferA, 0x00, GFX_BUFFER_SIZE_BYTES);
+  memset(g_pBufferB, 0x00, GFX_BUFFER_SIZE_BYTES);
+
+  g_pDrawingBuffer = g_pBufferA;
+  g_pSendingBuffer = g_pBufferB;
+
+  return true;
+}
+
+void Gfx_render(void) {
+  // Draw solid pink as a test
+  // memset(g_pDrawingBuffer, 0xF81F, GFX_BUFFER_SIZE_BYTES);
+
+  while (g_bGFX_TransferActive)
+    ;
+  // while(!g_bSPI_TransferDone);
+  DisplayBitmap();
+
+  // Generate the 3 chained lists
+  Gfx_BuildSG_For_Buffer((uint8_t *)g_pDrawingBuffer);
+
+  EVE_CS_LOW();
+  EVE_AddrForWr(RAM_G);
+
+  // This single call now executes all 768KB via hardware links
+  Gfx_Start_SG_Transfer();
+
+#ifndef GFX_ENABLE_INT
+  EVE_CS_HIGH();
+#endif
+
+  // Ping-pong swap
+  pixel16_t *temp = g_pDrawingBuffer;
+  g_pDrawingBuffer = g_pSendingBuffer;
+  g_pSendingBuffer = temp;
+
+  memset(g_pDrawingBuffer, 0, GFX_BUFFER_SIZE_BYTES);
+}
