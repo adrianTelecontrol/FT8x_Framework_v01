@@ -18,15 +18,8 @@
 #include <inc/hw_ssi.h>
 #include <inc/hw_types.h>
 
-
 #include "graphics_engine.h"
 #include "tiva_spi.h"
-
-
-// --- CONFIGURATION ---
-#define SPI_FRAME_SIZE 768000
-#define SPI_UDMA_CHUNK_SIZE 1024
-#define SPI_SG_TASK_COUNT (SPI_FRAME_SIZE / SPI_UDMA_CHUNK_SIZE)
 
 // --- MEMORY ALIGNMENT ---
 // Matches the official example lines 138-146
@@ -40,138 +33,41 @@ uint8_t pui8ControlTable[1024];
 uint8_t pui8ControlTable[1024] __attribute__((aligned(1024)));
 #endif
 
-static tDMAControlTable g_sTxTaskList[SPI_SG_TASK_COUNT];
-static tDMAControlTable g_sRxTaskList[SPI_SG_TASK_COUNT];
-
 volatile bool g_bSPI_TransferDone = true;
-static uint32_t g_ulDummyRx;
 extern const uint32_t g_ui32SysClock;
 static const volatile uint8_t g_dummyTxZero = 0;
 
-// --- TASK LIST BUILDERS (MATCHING TI EXAMPLE) ---
-static void SPI_Update_TX_List(const uint8_t *pBuffer) {
-  uint32_t i;
-  const uint8_t *pCurrSrc = pBuffer;
+void SSI3IntHandler(void) {
+  uint32_t ui32Status;
 
-  for (i = 0; i < SPI_SG_TASK_COUNT; i++) {
-    g_sTxTaskList[i].pvSrcEndAddr =
-        (void *)(pCurrSrc + SPI_UDMA_CHUNK_SIZE - 1);
-    g_sTxTaskList[i].pvDstEndAddr = (void *)(SSI3_BASE + SSI_O_DR);
+  // Read interrupt status
+  ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
 
-    // --- LOGIC FROM TI EXAMPLE ---
-    // If it is NOT the last task -> UDMA_MODE_PER_SCATTER_GATHER (Fetch next)
-    // If it IS the last task    -> UDMA_MODE_BASIC (Stop)
-    uint32_t ui32Mode = (i == (SPI_SG_TASK_COUNT - 1))
-                            ? UDMA_MODE_BASIC
-                            : UDMA_MODE_PER_SCATTER_GATHER;
+  // Clear the flags
+  MAP_SSIIntClear(SSI3_BASE, ui32Status);
 
-    g_sTxTaskList[i].ui32Control =
-        UDMA_SIZE_8 | UDMA_SRC_INC_8 | UDMA_DST_INC_NONE | UDMA_ARB_4 |
-        ((SPI_UDMA_CHUNK_SIZE - 1) << 4) | ui32Mode; // <--- Correct Mode
+  // ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
 
-    g_sTxTaskList[i].ui32Spare = 0;
-    pCurrSrc += SPI_UDMA_CHUNK_SIZE;
+  // Check if it was a DMA finish
+  // (Note: Sometimes Tiva just fires the raw interrupt, checking mode is safer)
+  // if ((MAP_uDMAChannelModeGet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT) ==
+  //      UDMA_MODE_STOP) &&
+  //     (MAP_uDMAChannelModeGet(UDMA_CH15_SSI3TX | UDMA_PRI_SELECT) ==
+  //      UDMA_MODE_STOP)) 
+	if(!MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX))
+	   {
+    // Signal your main loop that the SPI bus is free
+    g_bSPI_TransferDone = true;
+
+    while (MAP_SSIBusy(SSI3_BASE))
+      ;
+
+    // SSIIntDisable(SSI3_BASE, SSI_TXFF | SSI_RXFF | SSI_RXOR | SSI_RXTO);
+    MAP_SSIIntDisable(SSI3_BASE, SSI_DMATX | SSI_DMARX);
+
+    MAP_uDMAChannelDisable(UDMA_CH14_SSI3RX);
+    MAP_uDMAChannelDisable(UDMA_CH15_SSI3TX);
   }
-}
-
-static void SPI_Build_RX_List(void) {
-  uint32_t i;
-  for (i = 0; i < SPI_SG_TASK_COUNT; i++) {
-    g_sRxTaskList[i].pvSrcEndAddr = (void *)(SSI3_BASE + SSI_O_DR);
-    g_sRxTaskList[i].pvDstEndAddr = (void *)&g_ulDummyRx;
-
-    // RX MUST match TX structure exactly
-    uint32_t ui32Mode = (i == (SPI_SG_TASK_COUNT - 1))
-                            ? UDMA_MODE_BASIC
-                            : UDMA_MODE_PER_SCATTER_GATHER;
-
-    g_sRxTaskList[i].ui32Control = UDMA_SIZE_8 | UDMA_SRC_INC_NONE |
-                                   UDMA_DST_INC_NONE | UDMA_ARB_4 |
-                                   ((SPI_UDMA_CHUNK_SIZE - 1) << 4) | ui32Mode;
-
-    g_sRxTaskList[i].ui32Spare = 0;
-  }
-}
-
-// --- INTERRUPT HANDLER ---
-// void SSI3IntHandler(void) {
-//   uint32_t ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
-//   MAP_SSIIntClear(SSI3_BASE, ui32Status);
-// 
-//   // In SG mode, we check if the channel has disabled itself (completed)
-//   // rather than checking for STOP mode.
-//   if (!MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
-// 
-//     while (MAP_SSIBusy(SSI3_BASE))
-//       ;
-//     EVE_CS_HIGH();
-// 
-//     MAP_uDMAChannelDisable(UDMA_CH14_SSI3RX); // Ensure RX is off
-//     MAP_SSIIntDisable(SSI3_BASE, SSI_DMATX);
-// 
-//     g_bSPI_TransferDone = true;
-//   }
-// 
-//   // Safety Clear
-//   if (ui32Status & (SSI_RXOR | SSI_RXTO)) {
-//     MAP_SSIIntClear(SSI3_BASE, SSI_RXOR | SSI_RXTO);
-//   }
-// }
-
-// --- START TRANSFER ---
-
-void SPI_Start_SG_Transfer(const uint8_t *pBuffer) {
-  g_bSPI_TransferDone = false;
-  SPI_Update_TX_List(pBuffer);
-
-  // 1. Clean Hardware
-  MAP_SSIIntDisable(SSI3_BASE,
-                    SSI_DMATX | SSI_DMARX | SSI_RXFF | SSI_RXOR | SSI_RXTO);
-  MAP_SSIIntClear(SSI3_BASE,
-                  SSI_DMATX | SSI_DMARX | SSI_RXFF | SSI_RXOR | SSI_RXTO);
-
-  // 2. Drain FIFO
-  uint32_t trash;
-  while (MAP_SSIDataGetNonBlocking(SSI3_BASE, &trash))
-    ;
-
-  // 3. Configure Lists
-  // The "true" at the end sets the PRIMARY structure to
-  // UDMA_MODE_PER_SCATTER_GATHER
-  MAP_uDMAChannelScatterGatherSet(UDMA_CH14_SSI3RX, SPI_SG_TASK_COUNT,
-                                  g_sRxTaskList, 1);
-  MAP_uDMAChannelScatterGatherSet(UDMA_CH15_SSI3TX, SPI_SG_TASK_COUNT,
-                                  g_sTxTaskList, 1);
-
-  // 4. Enable Channels
-  MAP_uDMAChannelEnable(UDMA_CH14_SSI3RX);
-  MAP_uDMAChannelEnable(UDMA_CH15_SSI3TX);
-
-  // 5. KICKSTART
-  MAP_uDMAChannelRequest(UDMA_CH15_SSI3TX);
-
-#ifdef SPI_uDMA_USE_INTER
-  MAP_SSIIntEnable(SSI3_BASE, SSI_DMATX);
-#else
-  // BLOCKING LOOP
-
-  // Wait while the channel is ENABLED.
-  // When the SG sequence finishes, the hardware auto-clears the Enable bit.
-  while (MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
-    // DEADLOCK PROTECTION
-    // If RX Overrun happens, SSI stops. We must clear it to keep TX moving.
-    if (HWREG(SSI3_BASE + SSI_O_RIS) & SSI_RIS_RORRIS) {
-      HWREG(SSI3_BASE + SSI_O_ICR) = SSI_ICR_RORIC;
-    }
-  }
-
-  while (MAP_SSIBusy(SSI3_BASE))
-    ;
-  //EVE_CS_HIGH();
-
-  g_bSPI_TransferDone = true;
-  MAP_uDMAChannelDisable(UDMA_CH14_SSI3RX);
-#endif
 }
 
 uint8_t display_SPI_ReadWrite(uint16_t txData) {
@@ -277,7 +173,6 @@ void uDMA_Init(void) {
   MAP_uDMAChannelAssign(UDMA_CH14_SSI3RX);
   MAP_uDMAChannelAssign(UDMA_CH15_SSI3TX);
 
-  SPI_Build_RX_List();
 }
 
 void SPI3_Init(void) {
@@ -302,7 +197,6 @@ void SPI3_Init(void) {
   MAP_SSIEnable(SSI3_BASE);
 }
 
-
 void SPI3_FT81x_HighSpeed(void) {
   SSIDisable(SSI3_BASE);
   SSIConfigSetExpClk(SSI3_BASE, g_ui32SysClock, SSI_FRF_MOTO_MODE_0,
@@ -317,9 +211,6 @@ void init_SPI_screen(void) {
   GPIOPinTypeGPIOOutput(GPIO_PORTN_BASE, SPI_COMM_LED);
   GPIOPadConfigSet(GPIO_PORTQ_BASE, SPI_DISP_CS, GPIO_STRENGTH_12MA,
                    GPIO_PIN_TYPE_STD);
-  // EVE_PD_LOW();
-  // EVE_TURN_ON_LOW();
-  // EVE_CS_LOW();
 
   uDMA_Init();
   SPI3_Init();

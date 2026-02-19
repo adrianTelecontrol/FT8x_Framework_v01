@@ -9,8 +9,8 @@
 
 #include "graphics_engine.h"
 #include "helpers.h"
-//#include "image_loader.h"
-// #include "FT8xx_params.h"
+// #include "image_loader.h"
+//  #include "FT8xx_params.h"
 
 #include "draw_bitmap.h"
 
@@ -104,68 +104,68 @@ void initializeSquareObjects(void) {
     sqr->vel.y = (f32)((rand() % 20) - 10);
     sqr->angle = (f32)(rand() % 360);
     sqr->color = COLORS[rand() % COLORS_LEN];
-    sqr->mass = ( sqr->scale * sqr->width * sqr->height ) / 10;
+    sqr->mass = (sqr->scale * sqr->width * sqr->height) / 10;
     sqr->inertia = (1.0f / 6.0f) * sqr->mass * (ui16SideSize * ui16SideSize);
-    //sqr->angularVel = 1;
+    // sqr->angularVel = 1;
     sqr->angularVel = rand() % 10;
   }
 }
 
 void inverseMapping(SquareObject *obj) {
-    f32 rad = -obj->angle * (3.14159265f / 180.0f);
-    f32 cosA = cosf(rad);
-    f32 sinA = sinf(rad);
+  f32 rad = -obj->angle * (3.14159265f / 180.0f);
+  f32 cosA = cosf(rad);
+  f32 sinA = sinf(rad);
 
-    f32 stepXi = cosA / obj->scale;
-    f32 stepYi = sinA / obj->scale;
-    f32 stepXj = -sinA / obj->scale;
-    f32 stepYj = cosA / obj->scale;
+  f32 stepXi = cosA / obj->scale;
+  f32 stepYi = sinA / obj->scale;
+  f32 stepXj = -sinA / obj->scale;
+  f32 stepYj = cosA / obj->scale;
 
-    f32 hw = obj->width / 2.0f;
-    f32 hh = obj->height / 2.0f;
+  f32 hw = obj->width / 2.0f;
+  f32 hh = obj->height / 2.0f;
 
-    // 1. Calculate boundaries as SIGNED integers first
-    int sI = (int)(obj->pos.x - obj->boundingBox);
-    int sJ = (int)(obj->pos.y - obj->boundingBox);
-    int eI = (int)(obj->pos.x + obj->boundingBox);
-    int eJ = (int)(obj->pos.y + obj->boundingBox);
+  // 1. Calculate boundaries as SIGNED integers first
+  int sI = (int)(obj->pos.x - obj->boundingBox);
+  int sJ = (int)(obj->pos.y - obj->boundingBox);
+  int eI = (int)(obj->pos.x + obj->boundingBox);
+  int eJ = (int)(obj->pos.y + obj->boundingBox);
 
-    // 2. CLAMP boundaries to screen dimensions (This prevents the crash!)
-    if (sI < 0)
-        sI = 0;
-    if (sJ < 0)
-        sJ = 0;
-    if (eI > SCREEN_WIDTH)
-        eI = SCREEN_WIDTH;
-    if (eJ > SCREEN_HEIGHT)
-        eJ = SCREEN_HEIGHT;
+  // 2. CLAMP boundaries to screen dimensions (This prevents the crash!)
+  if (sI < 0)
+    sI = 0;
+  if (sJ < 0)
+    sJ = 0;
+  if (eI > SCREEN_WIDTH)
+    eI = SCREEN_WIDTH;
+  if (eJ > SCREEN_HEIGHT)
+    eJ = SCREEN_HEIGHT;
 
-    // 3. Calculate initial offsets based on the CLAMPED start points
-    f32 start_dx = (f32)sI - obj->pos.x;
-    f32 start_dy = (f32)sJ - obj->pos.y;
+  // 3. Calculate initial offsets based on the CLAMPED start points
+  f32 start_dx = (f32)sI - obj->pos.x;
+  f32 start_dy = (f32)sJ - obj->pos.y;
 
-    f32 rowX = (start_dx * cosA - start_dy * sinA) / obj->scale;
-    f32 rowY = (start_dx * sinA + start_dy * cosA) / obj->scale;
+  f32 rowX = (start_dx * cosA - start_dy * sinA) / obj->scale;
+  f32 rowY = (start_dx * sinA + start_dy * cosA) / obj->scale;
 
-    // 4. Use the clamped integers for the loops
-	uint32_t j = 0;
-    for (j = sJ; j < eJ; j++) {
-        f32 x = rowX;
-        f32 y = rowY;
+  // 4. Use the clamped integers for the loops
+  uint32_t j = 0;
+  for (j = sJ; j < eJ; j++) {
+    f32 x = rowX;
+    f32 y = rowY;
 
-		uint32_t i = 0;
-        for (i = sI; i < eI; i++) {
-            if (x >= -hw && x <= hw && y >= -hh && y <= hh) {
-                // Now this is guaranteed to be within the pixels array
-                scene.pixels[j * SCREEN_WIDTH + i] = obj->color;
-				Gfx_loadIntoBuffer(j * SCREEN_WIDTH + i, obj->color);
-            }
-            x += stepXi;
-            y += stepYi;
-        }
-        rowX += stepXj;
-        rowY += stepYj;
+    uint32_t i = 0;
+    for (i = sI; i < eI; i++) {
+      if (x >= -hw && x <= hw && y >= -hh && y <= hh) {
+        // Now this is guaranteed to be within the pixels array
+        scene.pixels[j * SCREEN_WIDTH + i] = obj->color;
+        Gfx_loadIntoBuffer(j * SCREEN_WIDTH + i, obj->color);
+      }
+      x += stepXi;
+      y += stepYi;
     }
+    rowX += stepXj;
+    rowY += stepYj;
+  }
 }
 
 /*
@@ -219,7 +219,7 @@ void inverseMapping(SquareObject *obj) {
         // u32 pixelIndex = rowOffset + (i * 2);
         u32 pixelIndex = rowOffset + (i * 2);
 
-		Gfx_loadIntoBuffer(pixelIndex, obj->color);
+                Gfx_loadIntoBuffer(pixelIndex, obj->color);
 
         scene.pixels[pixelIndex] = (u8)((obj->color >> 8) & 0xFF);
         scene.pixels[pixelIndex + 1] = (u8)(obj->color & 0xFF);
@@ -362,7 +362,7 @@ void basicObjectCollision(void) {
   }
 }
 
-void TEST_collideSquares(void) {
+void initializeSquaresPhysics(void) {
   // srand();
   // scene.pixels = (u8 *)malloc(sizeof(u16) * SCREEN_WIDTH * SCREEN_HEIGHT);
   scene.pixels = (u16 *)malloc(sizeof(u16) * SCREEN_WIDTH * SCREEN_HEIGHT);
@@ -376,20 +376,19 @@ void TEST_collideSquares(void) {
   // sBmpHandler.sHeader.bitmap_width = SCREEN_WIDTH;
 
   initializeSquareObjects();
+}
 
-  while (true) {
-    basicObjectCollision();
-    memset(scene.pixels, 0, SCREEN_WIDTH * SCREEN_HEIGHT * 2);
+void drawSquares(void) {
+  basicObjectCollision();
+  memset(scene.pixels, 0, SCREEN_WIDTH * SCREEN_HEIGHT * 2);
 
-    u16 i = 0;
-    for (i = 0; i < SQUARE_OBJ_LEN; i++) {
-      inverseMapping(&squares[i]);
-    }
-
-    // u8 ui8Flags = 0;
-    // ui8Flags |= EVE_LOAD_IMG_POLLING;
-    //ui8Flags |= EVE_LOAD_IMG_UDMA;
-    //EVE_LoadBitmap(&sBmpHandler, ui8Flags);
-	Gfx_render();
+  u16 i = 0;
+  for (i = 0; i < SQUARE_OBJ_LEN; i++) {
+    inverseMapping(&squares[i]);
   }
+
+  // u8 ui8Flags = 0;
+  // ui8Flags |= EVE_LOAD_IMG_POLLING;
+  // ui8Flags |= EVE_LOAD_IMG_UDMA;
+  // EVE_LoadBitmap(&sBmpHandler, ui8Flags);
 }
