@@ -20,7 +20,7 @@
 #include "EVE.h"
 #include "graphics_engine.h"
 #include "helpers.h"
-#include "tiva_spi.h"
+#include "hal_spi.h"
 
 // --- CONFIGURATION ---
 #define GFX_WIDTH 800
@@ -46,8 +46,8 @@ pixel16_t *g_pDrawingBuffer;
 pixel16_t *g_pSendingBuffer;
 
 // Access the global DMA Control Table (Declared in your main/DMA init)
-extern uint8_t pui8ControlTable[1024];
-#define PRIMARY_CTRL_TABLE ((tDMAControlTable *)pui8ControlTable)
+extern uint8_t g_HAL_uDMA_ControlTable[1024];
+#define PRIMARY_CTRL_TABLE ((tDMAControlTable *)g_HAL_uDMA_ControlTable)
 
 // The 3 Chained Task Lists
 #if defined(__ICCARM__)
@@ -69,37 +69,35 @@ static tDMAControlTable txLink1, txLink2;
 static tDMAControlTable rxLink1, rxLink2;
 static uint32_t g_ulDummyRx;
 
-volatile bool g_bGFX_TransferActive = false;
-
 // --- INTERRUPT HANDLER
-void SSI3IntHandler(void) {
-  // 1. Read and clear the interrupt status
-  uint32_t ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
-  MAP_SSIIntClear(SSI3_BASE, ui32Status);
-
-  // 2. Check if this interrupt is because the DMA transfer finished
-  if (g_bGFX_TransferActive && !MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
-
-    // Wait for the final few bits to shift out of the SPI hardware
-    while (MAP_SSIBusy(SSI3_BASE))
-      ;
-
-    // CRITICAL: Close the EVE SPI transaction!
-    EVE_CS_HIGH();
-
-    // Clean up DMA and disable this interrupt until the next frame
-    MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
-    MAP_SSIIntDisable(SSI3_BASE, SSI_TXFF);
-
-    // Signal to the CPU that the DMA is free!
-    g_bGFX_TransferActive = false;
-  }
-
-  // Safety catch for RX Overruns
-  if (ui32Status & SSI_RXOR) {
-    MAP_SSIIntClear(SSI3_BASE, SSI_RXOR);
-  }
-}
+// void SSI3IntHandler(void) {
+//   // 1. Read and clear the interrupt status
+//   uint32_t ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
+//   MAP_SSIIntClear(SSI3_BASE, ui32Status);
+// 
+//   // 2. Check if this interrupt is because the DMA transfer finished
+//   if (g_bGFX_TransferActive && !MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
+// 
+//     // Wait for the final few bits to shift out of the SPI hardware
+//     while (MAP_SSIBusy(SSI3_BASE))
+//       ;
+// 
+//     // CRITICAL: Close the EVE SPI transaction!
+//     HAL_SPI_CS_Disable();
+// 
+//     // Clean up DMA and disable this interrupt until the next frame
+//     MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+//     MAP_SSIIntDisable(SSI3_BASE, SSI_TXFF);
+// 
+//     // Signal to the CPU that the DMA is free!
+//     g_bGFX_TransferActive = false;
+//   }
+// 
+//   // Safety catch for RX Overruns
+//   if (ui32Status & SSI_RXOR) {
+//     MAP_SSIIntClear(SSI3_BASE, SSI_RXOR);
+//   }
+// }
 
 // --- BUILDER FUNCTION ---
 
@@ -272,7 +270,7 @@ void DisplayBitmap(void) {
 void Gfx_Start_SG_Transfer(void) {
 
   // Mark transfer as active
-  g_bGFX_TransferActive = true;
+  g_bSPI_TransferActive = true;
 
   MAP_uDMAErrorStatusClear();
   MAP_SSIIntDisable(SSI3_BASE,
@@ -327,7 +325,7 @@ void Gfx_render(void) {
   // Draw solid pink as a test
   // memset(g_pDrawingBuffer, 0xF81F, GFX_BUFFER_SIZE_BYTES);
 
-  while (g_bGFX_TransferActive)
+  while (g_bSPI_TransferActive)
     ;
   // while(!g_bSPI_TransferDone);
   DisplayBitmap();
@@ -335,14 +333,14 @@ void Gfx_render(void) {
   // Generate the 3 chained lists
   Gfx_BuildSG_For_Buffer((uint8_t *)g_pDrawingBuffer);
 
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
   EVE_AddrForWr(RAM_G);
 
   // This single call now executes all 768KB via hardware links
   Gfx_Start_SG_Transfer();
 
 #ifndef GFX_ENABLE_INT
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Disable();
 #endif
 
   // Ping-pong swap
