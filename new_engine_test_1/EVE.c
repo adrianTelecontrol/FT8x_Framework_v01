@@ -22,7 +22,7 @@
 #include "helpers.h"
 #include "tiva_config.h"
 #include "tiva_log.h"
-#include "tiva_spi.h"
+#include "hal_spi.h"
 
 #include "EVE.h"
 
@@ -128,35 +128,35 @@ EVE_State_t EVE_GetState(void) {
 }
 
 void EVE_Write32(uint32_t ftData32) {
-  display_SPI_ReadWrite((uint8_t)(ftData32));
-  display_SPI_ReadWrite((uint8_t)(ftData32 >> 8));
-  display_SPI_ReadWrite((uint8_t)(ftData32 >> 16));
-  display_SPI_ReadWrite((uint8_t)(ftData32 >> 24));
+  HAL_SPI_ReadWrite8((uint8_t)(ftData32));
+  HAL_SPI_ReadWrite8((uint8_t)(ftData32 >> 8));
+  HAL_SPI_ReadWrite8((uint8_t)(ftData32 >> 16));
+  HAL_SPI_ReadWrite8((uint8_t)(ftData32 >> 24));
 }
 
 void EVE_Write16(uint16_t ftData16) {
-  display_SPI_ReadWrite((uint8_t)(ftData16));
-  display_SPI_ReadWrite((uint8_t)(ftData16 >> 8));
+  HAL_SPI_ReadWrite8((uint8_t)(ftData16));
+  HAL_SPI_ReadWrite8((uint8_t)(ftData16 >> 8));
 }
 
-void EVE_Write8(uint8_t ftData8) { display_SPI_ReadWrite((uint8_t)(ftData8)); }
+void EVE_Write8(uint8_t ftData8) { HAL_SPI_ReadWrite8((uint8_t)(ftData8)); }
 
 uint32_t EVE_Read32(void) {
   uint32_t ftData32 = 0x00000000;
   uint32_t tempData32 = 0x00000000;
 
-  tempData32 = display_SPI_ReadWrite(0x00);
+  tempData32 = HAL_SPI_ReadWrite8(0x00);
   ftData32 = ftData32 | tempData32;
 
-  tempData32 = display_SPI_ReadWrite(0x00);
+  tempData32 = HAL_SPI_ReadWrite8(0x00);
   tempData32 = ((tempData32 << 8) & 0x0000FF00);
   ftData32 = ftData32 | tempData32;
 
-  tempData32 = display_SPI_ReadWrite(0x00);
+  tempData32 = HAL_SPI_ReadWrite8(0x00);
   tempData32 = ((tempData32 << 16) & 0x00FF0000);
   ftData32 = ftData32 | tempData32;
 
-  tempData32 = display_SPI_ReadWrite(0x00);
+  tempData32 = HAL_SPI_ReadWrite8(0x00);
   tempData32 = ((tempData32 << 24) & 0xFF000000);
   ftData32 = ftData32 | tempData32;
 
@@ -167,10 +167,10 @@ uint16_t EVE_Read16(void) {
   uint16_t ftData16 = 0x0000;
   uint16_t tempData16 = 0x0000;
 
-  tempData16 = display_SPI_ReadWrite(0x00);
+  tempData16 = HAL_SPI_ReadWrite8(0x00);
   ftData16 = ftData16 | tempData16;
 
-  tempData16 = display_SPI_ReadWrite(0x00);
+  tempData16 = HAL_SPI_ReadWrite8(0x00);
   tempData16 = ((tempData16 << 8) & 0xFF00);
   ftData16 = ftData16 | tempData16;
 
@@ -179,81 +179,81 @@ uint16_t EVE_Read16(void) {
 
 uint8_t EVE_Read8(void) {
   uint8_t ftData8 = 0x00;
-  ftData8 = display_SPI_ReadWrite(0x00);
+  ftData8 = HAL_SPI_ReadWrite8(0x00);
 
   return ftData8;
 }
 
 void EVE_AddrForWr(uint32_t ftAddress) {
-  display_SPI_ReadWrite((uint8_t)((ftAddress >> 16) | MEM_WRITE));
-  display_SPI_ReadWrite((uint8_t)(ftAddress >> 8));
-  display_SPI_ReadWrite((uint8_t)(ftAddress));
+  HAL_SPI_ReadWrite8((uint8_t)((ftAddress >> 16) | MEM_WRITE));
+  HAL_SPI_ReadWrite8((uint8_t)(ftAddress >> 8));
+  HAL_SPI_ReadWrite8((uint8_t)(ftAddress));
 }
 
 void EVE_AddrForRd(uint32_t ftAddress) {
-  display_SPI_ReadWrite((uint8_t)((ftAddress >> 16) | MEM_READ));
-  display_SPI_ReadWrite((uint8_t)(ftAddress >> 8));
-  display_SPI_ReadWrite((uint8_t)(ftAddress));
-  display_SPI_ReadWrite(0x00);
+  HAL_SPI_ReadWrite8((uint8_t)((ftAddress >> 16) | MEM_READ));
+  HAL_SPI_ReadWrite8((uint8_t)(ftAddress >> 8));
+  HAL_SPI_ReadWrite8((uint8_t)(ftAddress));
+  HAL_SPI_ReadWrite8(0x00);
 }
 
 void EVE_MemWrite32(uint32_t ftAddress, uint32_t ftData32) {
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
   EVE_AddrForWr(ftAddress);
   EVE_Write32(ftData32);
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Disable();
 }
 
 void EVE_MemWrite16(uint32_t ftAddress, uint16_t ftData16) {
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
   EVE_AddrForWr(ftAddress);
   EVE_Write16(ftData16);
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Disable();
 }
 
 void EVE_MemWrite8(uint32_t ftAddress, uint8_t ftData8) {
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
   EVE_AddrForWr(ftAddress);
   EVE_Write8(ftData8);
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Disable();
 }
 
 uint32_t EVE_MemRead32(uint32_t ftAddress) {
   uint32_t ftData32 = 0x00000000;
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
   EVE_AddrForRd(ftAddress);
   ftData32 = EVE_Read32();
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Disable();
 
   return ftData32;
 }
 
 uint16_t EVE_MemRead16(uint32_t ftAddress) {
   uint16_t ftData16 = 0x0000;
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
   EVE_AddrForRd(ftAddress);
   ftData16 = EVE_Read16();
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Disable();
 
   return ftData16;
 }
 
 uint8_t EVE_MemRead8(uint32_t ftAddress) {
   uint8_t ftData8 = 0x00;
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
   EVE_AddrForRd(ftAddress);
   ftData8 = EVE_Read8();
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Disable();
 
   return ftData8;
 }
 
 void EVE_CmdWrite(uint8_t EVECmd, uint8_t Param) {
-  EVE_CS_LOW();
-  display_SPI_ReadWrite((uint8_t)(EVECmd));
-  display_SPI_ReadWrite((uint8_t)(Param));
-  display_SPI_ReadWrite(0x00);
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Enable();
+  HAL_SPI_ReadWrite8((uint8_t)(EVECmd));
+  HAL_SPI_ReadWrite8((uint8_t)(Param));
+  HAL_SPI_ReadWrite8(0x00);
+  HAL_SPI_CS_Disable();
 }
 
 // ######################## SUPPORTING FUNCTIONS ###############################
@@ -434,18 +434,18 @@ void EVE_Init(void) {
   TIVA_LOGI(TASK_NAME,
             "FT81x init finished! Changing SPI3 to high bitrate < 30MHz");
   SysCtlDelay(MS_2_CLK(100));
-  SPI3_FT81x_HighSpeed();
+  HAL_SPI_SetHighSpeed();
 }
 
 void API_WakeUpScreen(void) {
-  EVE_PD_LOW();
+  HAL_SPI_PD_Low();
   SysCtlDelay(MS_2_CLK(1000)); // 350
 
   // EVE_TURN_ON_LOW();
   // SysCtlDelay(MS_2_CLK(1000));
   //  EVE_TURN_ON_HIGH();
   //  SysCtlDelay(MS_2_CLK(350));
-  EVE_PD_HIGH();
+  HAL_SPI_PD_High();
   SysCtlDelay(MS_2_CLK(500)); // Must be at least 20ms
 
   EVE_Init();
@@ -470,7 +470,7 @@ void API_LIB_BeginCoProList(void) {
   API_LIB_AwaitCoProEmpty(); // Wait for command FIFO to be empty and record
                              // current position in FIFO
 
-  EVE_CS_LOW(); // AVS                                            // CS low
+  HAL_SPI_CS_Enable(); // AVS                                            // CS low
                 // begins SPI transaction
   EVE_AddrForWr(RAM_CMD + cmdOffset); // Send address for writing as the next
                                       // free location in the co-pro buffer
@@ -478,7 +478,7 @@ void API_LIB_BeginCoProList(void) {
 
 // Ends co-pro list for display creation
 void API_LIB_EndCoProList(void) {
-  EVE_CS_HIGH(); // AVS                                                 //
+  HAL_SPI_CS_Disable(); // AVS                                                 //
                  // Chip Select high concludes burst
 
   EVE_MemWrite32(REG_CMD_WRITE,
@@ -496,84 +496,17 @@ void API_LIB_AwaitCoProEmpty(void) {
 
 #define VERIFY_CHUNK_SIZE 512 // Size of buffers in Stack
 
-bool EVE_VerifyRAMG(const uint8_t *ImgData, uint32_t DataSize,
-                    uint32_t DestAddress) {
-  uint32_t bytesVerified = 0;
 
-  // Two buffers: One for what EVE returns, one for what SDRAM holds
-  uint8_t eveBuffer[VERIFY_CHUNK_SIZE];
-  uint8_t sourceBuffer[VERIFY_CHUNK_SIZE];
-
-  TIVA_LOGI(TASK_NAME, "Starting Verification of %d bytes...", DataSize);
-
-  while (bytesVerified < DataSize) {
-    // 1. Calculate Chunk Size
-    uint32_t bytesRemaining = DataSize - bytesVerified;
-    uint32_t currentChunkSize = (bytesRemaining > VERIFY_CHUNK_SIZE)
-                                    ? VERIFY_CHUNK_SIZE
-                                    : bytesRemaining;
-    uint32_t currentAddress = DestAddress + bytesVerified;
-
-    // ---------------------------------------------------------
-    // 2. READ FROM EVE (SPI Burst Read)
-    // ---------------------------------------------------------
-    EVE_CS_LOW();
-
-    // Send Address (Read Mode)
-    EVE_AddrForRd(currentAddress);
-
-    // Send Dummy Byte (Required for Read)
-    uint8_t dummy = 0x00;
-    display_SPI_uDMA_transfer(&dummy, NULL, 1);
-
-    // Read Block
-    display_SPI_uDMA_transfer(NULL, eveBuffer, currentChunkSize);
-
-    EVE_CS_HIGH();
-
-    // ---------------------------------------------------------
-    // 3. READ FROM SOURCE (SDRAM Safe Copy)
-    // ---------------------------------------------------------
-    // We use memcpy to ensure optimized 32-bit reads from SDRAM
-    memcpy(sourceBuffer, &ImgData[bytesVerified], currentChunkSize);
-
-    // ---------------------------------------------------------
-    // 4. COMPARE
-    // ---------------------------------------------------------
-    if (memcmp(eveBuffer, sourceBuffer, currentChunkSize) != 0) {
-      // Find the exact byte that failed for the log
-      uint32_t i = 0;
-      for (i = 0; i < currentChunkSize; i++) {
-        if (eveBuffer[i] != sourceBuffer[i]) {
-          uint32_t failAddr = currentAddress + i;
-          TIVA_LOGE(TASK_NAME, "Verification FAILED at Offset: 0x%08X",
-                    failAddr);
-          TIVA_LOGE(TASK_NAME, "Expected: 0x%02X, Got: 0x%02X", sourceBuffer[i],
-                    eveBuffer[i]);
-          return false;
-        }
-      }
-    }
-
-    bytesVerified += currentChunkSize;
-  }
-
-  TIVA_LOGI(TASK_NAME, "Verification SUCCESS! RAM_G matches Source.");
-  return true;
-}
-// Helper for unused RX data
-static uint32_t g_ulDummyRx;
-
-#define WRITE_CHUNK_SIZE 512
 void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
                                 const uint32_t ui32Size,
-                                uint32_t ui32DestAddr) {
+                                uint32_t ui32DestAddr) 
+{
   uint32_t ui32BytesSent = 0;
   uint32_t ui32BytesRmd = 0;
   uint32_t ui32CurrChunkSize = 0;
 
   // 1. Start SPI Transaction
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
 
   // 2. Send Address Header
   EVE_AddrForWr(ui32DestAddr);
@@ -585,8 +518,8 @@ void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
     // uDMA hardware limit is 1024 items
     ui32CurrChunkSize = (ui32BytesRmd > 1024) ? 1024 : ui32BytesRmd;
 
-    display_SPI_uDMA_transfer(&pui8ImgSrc[ui32BytesSent], NULL,
-                              ui32CurrChunkSize);
+    HAL_SPI_uDMATransfer(&pui8ImgSrc[ui32BytesSent], NULL,
+                              ui32CurrChunkSize, true);
 
     ui32BytesSent += ui32CurrChunkSize;
   }
@@ -613,111 +546,13 @@ void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
   while (SSIDataGetNonBlocking(SSI3_BASE, &ui32Trash))
     ;
 
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Disable();
 }
-
-/*
-void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
-                                uint32_t ui32Size,
-                                uint32_t ui32DestAddr) {
-
-    // 1. Start SPI Transaction
-    EVE_CS_LOW();
-
-    // 2. Send 24-bit Destination Address (RAM_G + Offset)
-    //    (Assumes EVE_AddrForWr uses standard polling/blocking SPI)
-    EVE_AddrForWr(ui32DestAddr);
-
-    // 3. Perform the bulk transfer via uDMA
-    //    Directly from SDRAM -> SPI (No memcpy buffer needed)
-    EVE_SPI_uDMA_BurstWrite(pui8ImgSrc, ui32Size);
-
-    // 4. Handle 4-Byte Alignment Padding
-    //    EVE requires transfers to be multiples of 4 bytes.
-    uint8_t ui8Padding = ui32Size % 4;
-    if (ui8Padding > 0) {
-        ui8Padding = 4 - ui8Padding;
-        while (ui8Padding > 0) {
-            EVE_Write8(0x00); // Send dummy zeros
-            ui8Padding--;
-        }
-    }
-
-    // 5. End Transaction
-    EVE_CS_HIGH();
-}*/
-/*
-void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
-                                const uint32_t ui32Size,
-                                uint32_t ui32DestAddr) {
-  uint32_t ui32BytesSent = 0;
-
-  // Ensure this buffer size (e.g., 512 or 1024) is defined in your header
-  uint32_t pui32Buffer[WRITE_CHUNK_SIZE / 4];
-  uint8_t *pui8Buffer = (uint8_t *)pui32Buffer;
-
-  uint32_t ui32BytesRmd = 0;
-  uint32_t ui32CurrChunkSize = 0;
-
-  // 1. Start SPI Transaction
-  EVE_CS_LOW();
-
-  // 2. Send Address Header (3 Bytes) using Polling
-  //    (EVE_AddrForWr assumes CS is already Low)
-  EVE_AddrForWr(ui32DestAddr);
-
-  // 3. Loop: Copy SDRAM -> SRAM -> uDMA SPI
-  while (ui32BytesSent < ui32Size) {
-
-    ui32BytesRmd = ui32Size - ui32BytesSent;
-    ui32CurrChunkSize =
-        (ui32BytesRmd > WRITE_CHUNK_SIZE) ? WRITE_CHUNK_SIZE : ui32BytesRmd;
-
-    // A. Copy from SDRAM to Internal SRAM (Fixes EPI Bus Issues)
-    memcpy(pui8Buffer, &pui8ImgSrc[ui32BytesSent], ui32CurrChunkSize);
-
-    // B. Send via uDMA
-    //    Crucial: This function must NOT toggle CS lines internally.
-    display_SPI_uDMA_transfer(pui8Buffer, NULL, ui32CurrChunkSize);
-
-    ui32BytesSent += ui32CurrChunkSize;
-  }
-
-  TIVA_LOGI(TASK_NAME, "Finished uDMA SPI transfer. Sent %u bytes",
-            ui32BytesSent);
-
-  // 4. Handle Padding (Alignment to 4 bytes)
-  uint8_t ui8Padding = ui32Size % 4;
-  if (ui8Padding > 0) {
-    ui8Padding = 4 - ui8Padding;
-    while (ui8Padding > 0) {
-      // Use polling for these tiny writes
-      EVE_Write8(0x00);
-      ui8Padding--;
-    }
-  }
-  // 2. Disable SPI Interrupts at the Peripheral level
-  //    This ensures the NVIC line never goes high, even if a flag is set.
-  SSIIntDisable(SSI3_BASE, SSI_TXFF | SSI_RXFF | SSI_RXOR | SSI_RXTO);
-
-  uint32_t ui32Status = SSIIntStatus(SSI3_BASE, 1);
-  if (ui32Status & SSI_RXOR) {
-    SSIIntClear(SSI3_BASE, SSI_RXOR);
-  }
-
-  uint32_t ui32Trash;
-  while (SSIDataGetNonBlocking(SSI3_BASE, &ui32Trash)) {
-    // Just empty the buffer
-  }
-
-  // 6. End Transaction
-  EVE_CS_HIGH();
-}*/
 
 void API_LIB_WriteDataRAMG_ui32(const uint32_t *ImgData, uint32_t DataSize,
                                 uint32_t DestAddress) 
 {
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
 
   // Send destination address (RAM_G + Offset)
   EVE_AddrForWr(DestAddress);
@@ -728,19 +563,14 @@ void API_LIB_WriteDataRAMG_ui32(const uint32_t *ImgData, uint32_t DataSize,
     EVE_Write32(*(ImgData++));
   }
 
-  EVE_CS_HIGH();
-}
-
-void API_LIB_WriteDataRAMG_ui32_uDMA(const uint32_t *ImgData, uint32_t DataSize,
-                                uint32_t DestAddress) 
-{
+  HAL_SPI_CS_Disable();
 }
 
 void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
                            uint32_t DestAddress) {
   uint32_t DataPointer = 0;
 
-  EVE_CS_LOW();
+  HAL_SPI_CS_Enable();
 
   // Send destination address (RAM_G + Offset)
   EVE_AddrForWr(DestAddress);
@@ -769,7 +599,7 @@ void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
     }
   }
 
-  EVE_CS_HIGH();
+  HAL_SPI_CS_Disable();
 }
 /*
 // Writes a block of data to the RAM_G
@@ -780,7 +610,7 @@ void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
 
   DataPointer = 0;
 
-  EVE_CS_LOW(); // AVS // CS low begins SPI transaction
+  HAL_SPI_CS_Enable(); // AVS // CS low begins SPI transaction
   EVE_AddrForWr(
           DestAddress); // Send address to which first value will be written
 
@@ -805,7 +635,7 @@ void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
         EVE_Write8(0x00);
   }
 
-  EVE_CS_HIGH(); // AVS // CS high after burst write of image data
+  HAL_SPI_CS_Disable(); // AVS // CS high after burst write of image data
 }*/
 
 // Writes a string over SPI
@@ -886,7 +716,7 @@ void API_LIB_WriteDataToCMD(const uint8_t *ImgData, uint32_t TotalDataSize) {
     }
 
     CurrentChunk = 0;
-    EVE_CS_LOW();                       // AVS // Begin an SPI burst write
+    HAL_SPI_CS_Enable();                       // AVS // Begin an SPI burst write
     EVE_AddrForWr(RAM_CMD + cmdOffset); // to the next location in the FIFO
 
     while (CurrentIndex < Target) // From current index value, keep sending and
@@ -923,7 +753,7 @@ void API_LIB_WriteDataToCMD(const uint8_t *ImgData, uint32_t TotalDataSize) {
       }
     }
 
-    EVE_CS_HIGH(); // AVS // End the SPI burst
+    HAL_SPI_CS_Disable(); // AVS // End the SPI burst
 
     cmdOffset = EVE_IncCMDOffset(
         cmdOffset, (CurrentChunk)); // Calculate where end of data lies

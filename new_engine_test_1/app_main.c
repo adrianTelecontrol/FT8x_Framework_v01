@@ -37,7 +37,7 @@
 #include "sdram_hal.h"
 #include "sdspi_hal.h"
 #include "tiva_log.h"
-#include "tiva_spi.h"
+#include "hal_spi.h"
 #include "graphics_engine.h"
 
 #include "draw_bitmap.h"
@@ -364,7 +364,7 @@ int main(void) {
 #endif // ENABLE_SDRAM_TEST
 
   TIVA_LOGI(TASK_NAME, "Setting up Screen SPI...");
-  init_SPI_screen();
+  HAL_SPI_Init();
   TIVA_LOGI(TASK_NAME, "SPI set up successfully!");
   TIVA_LOGI(TASK_NAME, "Initial FT81x state...");
 #ifdef DEBUG_LV_2
