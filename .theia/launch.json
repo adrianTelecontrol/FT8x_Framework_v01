@@ -92,12 +92,12 @@
             "targetConfig": "${targetConfigFolder}\\target_config.ccxml"
         },
         {
-            "name": "new_engine_test_1",
+            "name": "new_engine_test",
             "type": "ccs-debug",
             "request": "launch",
             "projectInfo": {
-                "name": "new_engine_test_1",
-                "resourceId": "/new_engine_test_1"
+                "name": "new_engine_test",
+                "resourceId": "/new_engine_test"
             }
         },
         {
@@ -141,6 +141,15 @@
                     ]
                 }
             ]
+        },
+        {
+            "name": "new_engine_layer_test",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "new_engine_layer_test",
+                "resourceId": "/new_engine_layer_test"
+            }
         }
     ]
 }

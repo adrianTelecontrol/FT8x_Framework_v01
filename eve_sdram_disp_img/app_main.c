@@ -116,7 +116,7 @@ const uint8_t g_ui8EveColorNum = sizeof(g_ui32EveColors) / sizeof(uint32_t);
 
 static const char TASK_NAME[] = "main_task";
 
-const char *g_BMP_FILENAME = "UI.BMP";
+const char *g_BMP_FILENAME = "TEST5.BMP";
 
 #ifdef DEBUG
 void __error__(char *pcFilename, uint32_t ui32Line) {}

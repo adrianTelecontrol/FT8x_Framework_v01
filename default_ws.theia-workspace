@@ -7,6 +7,9 @@
 "settings": {
 	"[c]": {
 		"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+	},
+	"[cpp]": {
+		"editor.defaultFormatter": "xaver.clang-format"
 	}
 }
 }
