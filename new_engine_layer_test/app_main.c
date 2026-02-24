@@ -10,7 +10,6 @@
 #include <inc/hw_memmap.h>
 #include <inc/hw_types.h>
 
-
 #include "driverlib/epi.h"
 #include "driverlib/gpio.h"
 #include "driverlib/interrupt.h"
@@ -34,14 +33,13 @@
 #include "gfx.h"
 #include "helpers.h"
 // #include "image_loader.h"
+#include "font_engine.h"
 #include "graphics_engine.h"
 #include "hal_spi.h"
 #include "image_wrapper.h"
 #include "sdram_hal.h"
 #include "sdspi_hal.h"
 #include "tiva_log.h"
-#include "font_engine.h"
-
 
 #include "draw_bitmap.h"
 
@@ -109,7 +107,9 @@ static const char TASK_NAME[] = "main_task";
 
 const char *g_BMP_FILENAME = "TEST5.BMP";
 // const char *g_FONT_FILENAME = "ROBOTO.BDF";
-const char *g_FONT_FILENAME = "BEBAS32.BDF";
+// const char *g_FONT_FILENAME = "BEBAS32.BDF";
+const char *FONT_BEBAS_PATH = "BEBAS32.BDF";
+const char *FONT_ROBOTO_PATH = "ROBOTO.BDF";
 
 #ifdef DEBUG
 void __error__(char *pcFilename, uint32_t ui32Line) {}
@@ -390,9 +390,9 @@ int main(void) {
   EVE_Util_DebugReport();
 #endif
   TIVA_LOGI(TASK_NAME, "Clearing the screen to 0x%x color", EVE_PINK);
+  EVE_MemWrite8(REG_PWM_DUTY, 128);
   gfx_start(EVE_PINK);
   gfx_end();
-  EVE_MemWrite8(REG_PWM_DUTY, 128);
 #ifdef DEBUG_LV_2
   TIVA_LOGI(TASK_NAME, "FT81x State before loading the image\n");
   EVE_Util_DebugReport();
@@ -414,9 +414,15 @@ int main(void) {
   SDSPI_FetchBitmap(g_BMP_FILENAME, &sBitmapHandler, 800 * 480 * 2);
 
   // Load only Space (32) through Tilde (126)
-  if (SDSPI_FetchBDF(g_FONT_FILENAME, 32, 126)) {
-    TIVA_LOGI(TASK_NAME, "Font parsed successfully! Pool size: %u bytes",
-              g_SystemFont.poolSize);
+  if (SDSPI_FetchBDF(&g_SystemFont[FONT_ROBOTO], FONT_ROBOTO_PATH, 32, 126)) {
+    TIVA_LOGI(TASK_NAME, "Roboto Font parsed successfully! Pool size: %u bytes",
+              g_SystemFont[FONT_ROBOTO].poolSize);
+  } else {
+    TIVA_LOGE(TASK_NAME, "Failed to load or parse BDF font.");
+  }
+  if (SDSPI_FetchBDF(&g_SystemFont[FONT_BEBAS], FONT_BEBAS_PATH, 32, 126)) {
+    TIVA_LOGI(TASK_NAME, "Bebas Font parsed successfully! Pool size: %u bytes",
+              g_SystemFont[FONT_BEBAS].poolSize);
   } else {
     TIVA_LOGE(TASK_NAME, "Failed to load or parse BDF font.");
   }
@@ -428,8 +434,19 @@ int main(void) {
   uint32_t ui32Counter = 0;
   char pcCounter[10];
 
-    const char *TELECONTROL = "TELECONTROL";	
-    const char *text = "Hello!";	
+  const char *TELECONTROL = "TELECONTROL";
+  const char *text = "Hello!";
+
+  //uint8_t *pc = (uint8_t *)malloc(sizeof(uint8_t) * 0x0FFFFF);
+  /*HAL_SPI_CS_Enable();
+  EVE_AddrForWr(RAM_G);
+  uint32_t index = 0;
+  for(; index < 0x0FFFFF; index++)
+  {
+	EVE_Write8(0x00);
+  }
+  HAL_SPI_CS_Disable();*/
+  
   while (1) {
     // task01();
     uint32_t ui32ProcStart = DWTGetCycleCounter();
@@ -438,11 +455,13 @@ int main(void) {
 
     drawSquares(g_pDrawingBuffer);
 
-    Gfx_DrawString(g_pDrawingBuffer, 300, 400, text, 0xFD20, 2);
-    Gfx_DrawString(g_pDrawingBuffer, 200, 100, TELECONTROL, C_BROWN, 2);
+    Gfx_DrawString(g_pDrawingBuffer, FONT_BEBAS, 300, 400, text, 0xFD20, 2);
+    Gfx_DrawString(g_pDrawingBuffer, FONT_ROBOTO, 200, 100, TELECONTROL,
+                   C_BROWN, 2);
 
-	Helper_FloatToString(pcCounter, ui32Counter, 0, true);
-    Gfx_DrawString(g_pDrawingBuffer, 700, 50, pcCounter, C_INDIGO, 1);
+    Helper_FloatToString(pcCounter, ui32Counter, 0, true);
+    Gfx_DrawString(g_pDrawingBuffer, FONT_ROBOTO, 700, 50, pcCounter, C_INDIGO,
+                   1);
 
     SysCtlDelay(MS_2_CLK(50));
     uint32_t ui32ProcEnd = DWTGetCycleCounter();
@@ -452,6 +471,6 @@ int main(void) {
 
     Gfx_render();
 
-	ui32Counter++;
+    ui32Counter++;
   }
 }

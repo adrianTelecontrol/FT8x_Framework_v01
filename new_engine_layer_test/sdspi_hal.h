@@ -6,6 +6,7 @@
 
 #include <fatfs/src/ff.h>
 
+#include "font_engine.h"
 #include "bitmap_parser.h"
  
 
@@ -13,7 +14,7 @@ int SDSPI_FetchFile(const char *pcFileName, uint8_t *pui32SDRAMBuff, uint32_t ui
 
 int SDSPI_FetchBitmap(const char *pcFileName, BitmapHandler_t *psBitmapHandler, const uint32_t ui32BuffSize);
 
-bool SDSPI_FetchBDF(const char *pcFileName, uint16_t startChar, uint16_t endChar);
+bool SDSPI_FetchBDF(BDF_Font_t *psFont, const char *pcFileName, uint16_t startChar, uint16_t endChar);
 
 const char* SDSPI_StringFromFResult(FRESULT iFResult);
 

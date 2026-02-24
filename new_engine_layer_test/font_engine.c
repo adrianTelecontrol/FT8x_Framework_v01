@@ -14,22 +14,27 @@
 #define SCREEN_WIDTH 800
 #endif
 
-void Gfx_DrawChar_Scaled(pixel16_t *pBuffer, int16_t *cursorX, int16_t cursorY,
-                         char c, uint16_t color, uint8_t scale) {
+void Gfx_DrawChar_Scaled(pixel16_t *pBuffer, uint8_t ui8Font, int16_t *cursorX, int16_t cursorY, char c, uint16_t color, uint16_t scale) {
+	
+	if(ui8Font >=  FONT_NUMBER)
+		return;
+
+	BDF_Font_t sFont = g_SystemFont[ui8Font];
+
   // 1. Bounds check and default
-  if (c < g_SystemFont.firstChar || c > g_SystemFont.lastChar)
+  if (c < sFont.firstChar || c > sFont.lastChar)
     c = '?';
 
   // 2. Look up the glyph
-  uint16_t charIndex = c - g_SystemFont.firstChar;
-  BDF_Glyph_t glyph = g_SystemFont.glyphs[charIndex];
+  uint16_t charIndex = c - sFont.firstChar;
+  BDF_Glyph_t glyph = sFont.glyphs[charIndex];
 
   // 3. Scale the offsets!
   int16_t drawX = *cursorX + (glyph.xOffset * scale);
   int16_t drawY = cursorY + (glyph.yOffset * scale);
 
   // 4. Point to the pixel pool
-  uint8_t *charPixels = &g_SystemFont.pixelPool[glyph.bitmapOffset];
+  uint8_t *charPixels = &sFont.pixelPool[glyph.bitmapOffset];
 
   uint16_t byteIndex = 0;
 
@@ -78,19 +83,18 @@ void Gfx_DrawChar_Scaled(pixel16_t *pBuffer, int16_t *cursorX, int16_t cursorY,
   *cursorX += (glyph.advanceX * scale);
 }
 
-void Gfx_DrawString(pixel16_t *pBuffer, int16_t x, int16_t y, const char *str,
-                    uint16_t color, uint8_t scale) {
+void Gfx_DrawString(pixel16_t *pBuffer, uint8_t ui8Font, int16_t x, int16_t y, const char *str, uint16_t color, uint8_t scale) {
   int16_t cursorX = x;
   int16_t cursorY = y;
 
   while (*str) {
     if (*str == '\n') {
-      cursorY += (g_SystemFont.yAdvance * scale); // Scaled newline
+      cursorY += (g_SystemFont[ui8Font].yAdvance * scale); // Scaled newline
       cursorX = x;
     } else {
       // The cursorX is passed by reference so the char function updates it
       // automatically
-      Gfx_DrawChar_Scaled(pBuffer, &cursorX, cursorY, *str, color, scale);
+      Gfx_DrawChar_Scaled(pBuffer, ui8Font, &cursorX, cursorY, *str, color, scale);
     }
     str++;
   }

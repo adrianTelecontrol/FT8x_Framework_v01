@@ -504,7 +504,7 @@ int SDSPI_FetchBitmap(const char *pcFileName, BitmapHandler_t *psBitmapHandler,
 }
 
 
-bool SDSPI_FetchBDF(const char *pcFileName, uint16_t startChar, uint16_t endChar)
+bool SDSPI_FetchBDF(BDF_Font_t *psFont, const char *pcFileName, uint16_t startChar, uint16_t endChar)
 {
 	FIL file;
     FRESULT fr;
@@ -514,26 +514,27 @@ bool SDSPI_FetchBDF(const char *pcFileName, uint16_t startChar, uint16_t endChar
     if (fr != FR_OK) return false;
 
     // Initialize the font structure
-    g_SystemFont.firstChar = startChar;
-    g_SystemFont.lastChar = endChar;
-    g_SystemFont.poolSize = 0;
+	//BDF_Font_t psFont->= *ppsFont->
+    psFont->firstChar = startChar;
+    psFont->lastChar = endChar;
+    psFont->poolSize = 0;
     
     uint32_t numChars = endChar - startChar + 1;
 
     // Allocate memory in external SDRAM (Assuming heap is mapped to 0x60000000)
-    g_SystemFont.glyphs = (BDF_Glyph_t *)malloc(numChars * sizeof(BDF_Glyph_t));
+    psFont->glyphs = (BDF_Glyph_t *)malloc(numChars * sizeof(BDF_Glyph_t));
     
     // Allocate a large pool for the pixels (e.g., 64KB). 
     // You can adjust this based on the font size.
-    g_SystemFont.pixelPool = (uint8_t *)malloc(65536); 
+    psFont->pixelPool = (uint8_t *)malloc(65536); 
 
-    if (!g_SystemFont.glyphs || !g_SystemFont.pixelPool) {
+    if (!psFont->glyphs || !psFont->pixelPool) {
         f_close(&file);
         return false; // Malloc failed
     }
 
     // Zero out the glyph table initially
-    memset(g_SystemFont.glyphs, 0, numChars * sizeof(BDF_Glyph_t));
+    memset(psFont->glyphs, 0, numChars * sizeof(BDF_Glyph_t));
 
     // State Machine Variables
     int32_t currentChar = -1;
@@ -560,7 +561,7 @@ bool SDSPI_FetchBDF(const char *pcFileName, uint16_t startChar, uint16_t endChar
 				int i = 0;
                 for (; i < bytesPerRow; i++) {
                     uint8_t pixelByte = BDF_HexToByte(&line[i * 2]);
-                    g_SystemFont.pixelPool[g_SystemFont.poolSize++] = pixelByte;
+                    psFont->pixelPool[psFont->poolSize++] = pixelByte;
                 }
             }
             continue;
@@ -573,7 +574,7 @@ bool SDSPI_FetchBDF(const char *pcFileName, uint16_t startChar, uint16_t endChar
             strtol(p, &p, 10); // Skip global width
             
             // Capture the global font height for our newline (\n) logic
-            g_SystemFont.yAdvance = strtol(p, NULL, 10); 
+            psFont->yAdvance = strtol(p, NULL, 10); 
         }
         else if (strncmp(line, "ENCODING", 8) == 0) {
             currentChar = atoi(&line[9]);
@@ -597,14 +598,14 @@ bool SDSPI_FetchBDF(const char *pcFileName, uint16_t startChar, uint16_t endChar
                 uint32_t index = currentChar - startChar;
                 
                 // Copy the parsed properties
-                g_SystemFont.glyphs[index] = tempGlyph;
+                psFont->glyphs[index] = tempGlyph;
                 
                 // Record where in the massive pixel pool this character's image begins
-                g_SystemFont.glyphs[index].bitmapOffset = g_SystemFont.poolSize;
+                psFont->glyphs[index].bitmapOffset = psFont->poolSize;
                 
                 // In BDF, Y-offset is from the baseline UP. 
                 // For a top-down renderer, we invert it.
-                g_SystemFont.glyphs[index].yOffset = -(tempGlyph.height + tempGlyph.yOffset);
+                psFont->glyphs[index].yOffset = -(tempGlyph.height + tempGlyph.yOffset);
             }
         }
     }

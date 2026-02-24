@@ -23,7 +23,7 @@
 #define C_INDIGO      0x4810    // Original: 0xFF82004B (R=75,  G=0,   B=130)
 
 // Packs standard 8-bit R, G, B values into a 16-bit RGB565 integer
-#define RGB565(r, g, b) ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
+//#define RGB565(r, g, b) ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
 
 void initializeSquaresPhysics(void);
 

@@ -25,7 +25,11 @@ typedef struct {
 } BDF_Font_t;
 
 // Global font instance
-BDF_Font_t g_SystemFont;
+#define FONT_NUMBER		2
+#define FONT_ROBOTO		0
+#define FONT_BEBAS		1
+
+BDF_Font_t g_SystemFont[FONT_NUMBER];
 
 static inline uint8_t BDF_HexToByte(const char *hex) {
   uint8_t val = 0;
@@ -43,9 +47,9 @@ static inline uint8_t BDF_HexToByte(const char *hex) {
 }
 
 
-void Gfx_DrawChar(pixel16_t *pBuffer, int16_t *cursorX, int16_t cursorY, char c, uint16_t color, uint16_t scale);
+void Gfx_DrawChar(pixel16_t *pBuffer, uint8_t ui8Font, int16_t *cursorX, int16_t cursorY, char c, uint16_t color, uint16_t scale);
 
-void Gfx_DrawString(pixel16_t *pBuffer, int16_t x, int16_t y, const char *str, uint16_t color, uint8_t scale);
+void Gfx_DrawString(pixel16_t *pBuffer, uint8_t ui8Font, int16_t x, int16_t y, const char *str, uint16_t color, uint8_t scale);
 
 #endif // FONT_ENGINE_H
 
