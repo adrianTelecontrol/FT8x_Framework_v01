@@ -462,6 +462,12 @@ int main(void) {
     Helper_FloatToString(pcCounter, ui32Counter, 0, true);
     Gfx_DrawString(g_pDrawingBuffer, FONT_ROBOTO, 700, 50, pcCounter, C_INDIGO,
                    1);
+	
+	gfx_fillRoundRect(g_pDrawingBuffer, 400, 200, 120, 80, 5, C_GOLD);
+	gfx_fillCircle(g_pDrawingBuffer, 150, 200, 50, C_BROWN);
+	gfx_fillTriangle(g_pDrawingBuffer, 20, 100, 50, 50, 80, 100, C_INDIGO);
+	gfx_fillEllipse(g_pDrawingBuffer, LCD_WIDTH / 2, LCD_HEIGHT / 2, 50, 35, C_CORAL);
+	
 
     SysCtlDelay(MS_2_CLK(50));
     uint32_t ui32ProcEnd = DWTGetCycleCounter();
