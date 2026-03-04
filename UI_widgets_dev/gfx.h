@@ -6,9 +6,11 @@
 
 #include "FT8xx.h"
 #include "graphics_engine.h"
-#include "Widgets.h"
 
 #define MAX_CANVAS_WIDGETS 20
+
+// Darkens any RGB565 color by 50% safely and instantly
+#define DARKEN_COLOR(c) (((c) & 0xF7DE) >> 1)
 
 typedef enum {
     WD_TYPE_NULL = 0,
@@ -24,18 +26,18 @@ typedef struct RegionTouchObject
     uint16_t y2;
 } RegionTouchObject;
 
-typedef struct TouchStatus
+typedef struct
 {
     uint16_t x;
     uint16_t y;
     uint8_t state;
 } TouchStatus;
 
-typedef struct Dimensions
+typedef struct
 {
     uint16_t width;
     uint16_t height;
-} Dimensions;
+} Size;
 
 typedef struct Position
 {
@@ -62,21 +64,31 @@ typedef struct Line
 typedef struct Rectangle
 {
     Position pos;
-    Dimensions dim;
+    Size dim;
     uint16_t round;
     uint32_t color;
     const char *name;
 } Rectangle;
 
+typedef enum {
+    BTN_STATE_NORMAL = 0,
+    BTN_STATE_PRESSED,
+    BTN_STATE_DISABLED
+} ButtonState_e;
+
 typedef struct Button
 {
-    Dimensions dim;
+    Size size;
     Position pos;
     RegionTouchObject regTouch;
+	uint16_t radius;
 	uint16_t textColor;
 	uint16_t backgroundColor;
-    uint32_t status;
-    uint8_t sizeFont;
+	uint16_t borderWidth;
+	uint16_t borderColor;
+    ButtonState_e state;
+    uint8_t font;
+	uint8_t fontScale;
     uint8_t activate;
     char *label;
 	char *name;
@@ -94,7 +106,7 @@ typedef struct
 
 typedef struct GenericWidgetNode
 {
-    GenericWidget sWidget;
+    gfx_GenericWidget sWidget;
     struct GenericWidgetNode *psNext;
     struct GenericWidgetNode *psPrev;    
 } gfx_GenericWidgetNode;
@@ -102,20 +114,22 @@ typedef struct GenericWidgetNode
 typedef struct
 {
     uint32_t ui32BackgroundColor;
-    GenericWidgetNode *psWidgets;
+    gfx_GenericWidgetNode *psWidgets;
 } gfx_Canvas;
-
 bool gfx_initRegTouch(void *, widget_type_e);
 
 TouchStatus gfx_touchReadRegion(void);
 
+//
+// ************ Control Funcitons ************************
+//
 bool gfx_touchObject(RegionTouchObject, TouchStatus);
 
-bool gfx_isWidgetTouched(GenericWidget *, TouchStatus);
+bool gfx_isWidgetTouched(gfx_GenericWidget *, TouchStatus);
 
-bool gfx_clearSurface(Surface *);
+bool gfx_clearSurface(gfx_Canvas *);
 
-bool gfx_renderSurface(Surface *);
+bool gfx_renderSurface(gfx_Canvas *);
 
 void gfx_start(uint32_t colorBackground);
 
@@ -123,6 +137,9 @@ void gfx_end(void);
 
 void gfx_clear(void);
 
+//
+// ************ PrimitiveFuncitons ************************
+//
 void gfx_drawCircle(pixel16_t *pBuf, int16_t x0, int16_t y0, int16_t r,
                               uint16_t color);
 
@@ -149,5 +166,9 @@ void gfx_fillTriangle(pixel16_t *pBuf, int16_t x0, int16_t y0, int16_t x1, int16
 
 void gfx_fillRoundRect(pixel16_t *pBuf, int16_t x, int16_t y, int16_t w, int16_t h,
                                  int16_t r, uint16_t color);
+//
+// ************ Widget Funtions ************************
+//
 
+void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn);
 #endif // GFX_H
