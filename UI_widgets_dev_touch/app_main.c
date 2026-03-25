@@ -8,7 +8,9 @@
 #include <inc/hw_epi.h>
 #include <inc/hw_ints.h>
 #include <inc/hw_memmap.h>
+#include <inc/hw_ssi.h>
 #include <inc/hw_types.h>
+
 
 #include "driverlib/epi.h"
 #include "driverlib/gpio.h"
@@ -309,6 +311,57 @@ void task01(void) { TIVA_LOGI(TASK_NAME, "Task01 executing!"); }
 
 void task02(void) { TIVA_LOGI(TASK_NAME, "Task02 executing!"); }
 
+/*
+void Gfx_SendContinuousBlock_Blocking(pixel16_t *pActiveBuffer, int16_t x,
+int16_t y, int16_t w, int16_t h) {
+    // 1. Bounds checking
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > 800) w = 800 - x;
+    if (y + h > 480) h = 480 - y;
+    if (w <= 0 || h <= 0) return;
+
+    // 2. The Math: Calculate absolute 1D memory start and end points
+    uint32_t startOffset = (y * 800) + x;
+    uint32_t endOffset = ((y + h - 1) * 800) + (x + w);
+
+    // Calculate the massive continuous block size in bytes (2 bytes per pixel)
+    uint32_t totalBytesToSend = (endOffset - startOffset) * 2;
+
+    uint8_t *pSrcSDRAM = (uint8_t *)&pActiveBuffer[startOffset];
+    uint32_t startingRAMG = startOffset * 2;
+
+    // 3. Assert Chip Select LOW and HOLD IT
+    HAL_SPI_CS_Enable();
+
+    // 4. Send the 3-byte memory write address EXACTLY ONCE
+    HWREG(SSI3_BASE + SSI_O_DR) = (startingRAMG >> 16) | 0x80;
+    HWREG(SSI3_BASE + SSI_O_DR) = (startingRAMG >> 8) & 0xFF;
+    HWREG(SSI3_BASE + SSI_O_DR) = startingRAMG & 0xFF;
+
+    // Wait for the address to clear the SPI FIFO
+    while(MAP_SSIBusy(SSI3_BASE));
+
+    // 5. Blast the data in chunks using the uDMA limit (1024 bytes)
+    uint32_t bytesRemaining = totalBytesToSend;
+
+    while(bytesRemaining > 0) {
+        // Find out if we have more than 1024 bytes left
+        uint16_t chunkSize = (bytesRemaining > 1024) ? 1024 : bytesRemaining;
+
+        // Use your HAL to send the chunk and BLOCK the CPU until it finishes
+        HAL_SPI_uDMATransfer(pSrcSDRAM, NULL, chunkSize, true);
+
+        // Advance pointers
+        pSrcSDRAM += chunkSize;
+        bytesRemaining -= chunkSize;
+    }
+
+    // 6. Release Chip Select HIGH to finalize the massive transaction
+    HAL_SPI_CS_Disable();
+}*/
+void Btn1_onClicked(gfx_Button *btn) { btn->state = BTN_STATE_PRESSED; }
+
 int main(void) {
 
   // Enable all the ports
@@ -367,6 +420,7 @@ int main(void) {
 #endif
   TIVA_LOGI(TASK_NAME, "Clearing the screen to 0x%x color", EVE_PINK);
   EVE_MemWrite8(REG_PWM_DUTY, 128);
+  EVE_MemWrite8(REG_CSPREAD, 0);
   gfx_start(EVE_PINK);
   gfx_end();
 #ifdef DEBUG_LV_2
@@ -410,34 +464,44 @@ int main(void) {
   uint32_t ui32Counter = 0;
   char pcCounter[10];
 
+  gfx_calibrate();
+
   // =========================================================================
   // 1. INITIALIZATION & STATIC SETUP (Before the while loop)
   // =========================================================================
 
   // A. Wipe buffer with the heavy background image once
   memcpy(g_pDrawingBuffer, sBitmapHandler.ui8Pixels, 800 * 480 * 2);
-  //drawSquares(g_pDrawingBuffer);
+  drawSquares(g_pDrawingBuffer);
 
   // B. Draw all STATIC elements that never change
-  gfx_DrawString(g_pDrawingBuffer, FONT_BEBAS, 300, 400, "STATIC TITLE",
-                 0xFD20, 2, ALIGN_CENTER);
+  gfx_DrawString(g_pDrawingBuffer, FONT_BEBAS, 300, 400, "STATIC TITLE", 0xFD20,
+                 2, ALIGN_CENTER);
   gfx_DrawString(g_pDrawingBuffer, FONT_ROBOTO, 200, 100, "TELECONTROL",
                  C_BROWN, 2, ALIGN_CENTER);
 
   // C. Initialize the button state
   gfx_Button btn = {
       .name = "btn1",
-      .backgroundColor = C_ORANGE,
+      .backgroundColor = C_CYAN,
       .textColor = C_BLACK,
       .label = "PRESS ME!",
       .font = FONT_BEBAS,
-      .fontScale = 2,
-      .size = (Size){.width = 240, .height = 160},
+      .fontScale = 1,
+      .size = (Size){.width = 120, .height = 70},
       .pos = (Position){.x = LCD_WIDTH / 2 - 120, .y = LCD_HEIGHT / 2 - 80},
       .state = BTN_STATE_NORMAL, // Start normal!
       .radius = 8,
       .borderWidth = 1,
-      .borderColor = C_INDIGO};
+      .borderColor = C_INDIGO,
+      .regTouch =
+          (RegionTouchObject){
+              .x1 = LCD_WIDTH / 2 - 120,
+              .x2 = LCD_WIDTH / 2,
+              .y1 = LCD_HEIGHT / 2 - 80,
+              .y2 = LCD_HEIGHT / 2 - 10,
+          },
+  };
   gfx_drawButton(g_pDrawingBuffer, &btn);
 
   // D. Send this baseline screen to the FT81x using the heavy, blocking render
@@ -446,11 +510,11 @@ int main(void) {
   // Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, 800, 480);
 
   // // Kickstart the engine
-  // Gfx_RenderTask(); 
+  // Gfx_RenderTask();
 
   // // Pump the state machine until all 480 rows are successfully sent
-  // // This blocks just long enough to ensure the baseline is drawn before the loop starts
-  // while (g_RenderEngine.state != RENDER_IDLE) {
+  // // This blocks just long enough to ensure the baseline is drawn before the
+  // loop starts while (g_RenderEngine.state != RENDER_IDLE) {
   //     Gfx_RenderTask();
   // }
 
@@ -464,8 +528,7 @@ int main(void) {
     Gfx_RenderTask();
 
     // 2. Only calculate UI updates if the DMA has finished the previous jobs
-    if (g_RenderEngine.state == RENDER_IDLE) 
-	{
+    if (g_RenderEngine.state == RENDER_IDLE) {
 
       // -----------------------------------------------------------------
       // WIDGET UPDATE 1: The Ticking Counter
@@ -473,7 +536,7 @@ int main(void) {
       // A. Erase the old number by restoring JUST the background behind it.
       // (Assuming the counter box is around X:650, Y:30, Width:100, Height:40)
       Gfx_RestoreBackground_Fast((pixel16_t *)sBitmapHandler.ui8Pixels,
-                                 g_pDrawingBuffer, 650, 30, 250, 160);
+                                 g_pDrawingBuffer, 650, 30, 100, 40);
 
       // B. Draw the new number
       Helper_FloatToString(pcCounter, ui32Counter, 0, true);
@@ -487,15 +550,27 @@ int main(void) {
       // WIDGET UPDATE 2: The Button
       // -----------------------------------------------------------------
       // Let's simulate the button being pressed every 50 frames
-      bool simulateTouch = (ui32Counter % 10 == 0);
+      // bool simulateTouch = (ui32Counter % 100 == 0)
+      // 4. SPI GUARD: Flush the RX FIFO of all leftover DMA garbage
+
+      while (MAP_SSIBusy(SSI3_BASE))
+        ;
+      uint32_t trash;
+      while (MAP_SSIDataGetNonBlocking(SSI3_BASE, &trash))
+        ;
+      TouchStatus touch = gfx_touchReadRegion();
+      // SysCtlDelay(MS_2_CLK(10));
+
+      bool simulateTouch = gfx_touchObject(btn.regTouch, touch);
 
       if (simulateTouch) {
         // Toggle state
         btn.state = (btn.state == BTN_STATE_NORMAL) ? BTN_STATE_PRESSED
                                                     : BTN_STATE_NORMAL;
 
-      	Gfx_RestoreBackground_Fast((pixel16_t *)sBitmapHandler.ui8Pixels,
-                                 g_pDrawingBuffer, LCD_WIDTH / 2 - 150, LCD_HEIGHT / 2 - 100, 290, 190);
+        Gfx_RestoreBackground_Fast((pixel16_t *)sBitmapHandler.ui8Pixels,
+                                   g_pDrawingBuffer, LCD_WIDTH / 2 - 150,
+                                   LCD_HEIGHT / 2 - 100, 140, 90);
         // Redraw the button (your gfx_drawButton handles the colors based on
         // state)
         gfx_drawButton(g_pDrawingBuffer, &btn);
@@ -508,13 +583,18 @@ int main(void) {
         int bboxW = btn.size.width + (btn.borderWidth * 2);
         int bboxH = btn.size.height + (btn.borderWidth * 2);
 
-        Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX, bboxY, bboxW, bboxH);
+        // Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX, bboxY, bboxW,
+        // bboxH); Gfx_SendContinuousBlock_Blocking(g_pDrawingBuffer, bboxX,
+        // bboxY, bboxW, bboxH);
+
+        Gfx_SendContinuousBlock_SG(g_pDrawingBuffer, bboxX, bboxY, bboxW,
+                                   bboxH);
       }
 
       ui32Counter++;
     } // End of RENDER_IDLE block
 
     // Simulate other system tasks running freely in the background
-    SysCtlDelay(MS_2_CLK(10));
+    // SysCtlDelay(MS_2_CLK(10));
   }
 }

@@ -29,11 +29,6 @@ static TouchStatus g_sPastTouchStatus;
 static gesture_type_e g_eGestureType;
 static Clock_Struct g_clkGestureObj;
 
-Void clkGestureCallbackFxn(UArg arg0)
-{
-
-}
-
 Void touchScreenTask(UArg arg0, UArg arg1)
 {
     UInt32 ui32CurrentTicks, ui32PressStartTicks, ui32TouchDuration = 0;

@@ -8,6 +8,7 @@
 #include <inc/hw_epi.h>
 #include <inc/hw_ints.h>
 #include <inc/hw_memmap.h>
+#include <inc/hw_ssi.h>
 #include <inc/hw_types.h>
 
 #include "driverlib/epi.h"
@@ -34,12 +35,16 @@
 #include "helpers.h"
 // #include "image_loader.h"
 #include "font_engine.h"
+#include "forms/home_form.h"
+#include "forms_manager.h"
+#include "gesture_engine.h"
 #include "graphics_engine.h"
 #include "hal_spi.h"
 #include "image_wrapper.h"
 #include "sdram_hal.h"
 #include "sdspi_hal.h"
 #include "tiva_log.h"
+
 
 #include "draw_bitmap.h"
 
@@ -82,45 +87,15 @@ const uint32_t g_ui32SysClock = 120E6;
 #define EPI_PORTP_PINS (GPIO_PIN_3 | GPIO_PIN_2)
 #define EPI_PORTQ_PINS (GPIO_PIN_3 | GPIO_PIN_2 | GPIO_PIN_1 | GPIO_PIN_0)
 
-//*****************************************************************************
-//
-// Use the following to specify the SDRAM location where the application will
-// be downloaded from the SDCARD
-//
-//*****************************************************************************
 #define SDRAM_APP_START_ADDRESS 0x60000000
 #define SDRAM_APP_END_ADDRESS 0x61FFFFFF
 
-//*****************************************************************************
-//
-// Enable SDRAM test to be executed before using it
-//
-//*****************************************************************************
-// #define ENABLE_SDRAM_TEST 1
-uint32_t g_ui32EveColors[] = {EVE_DARK_BLUE, EVE_GREEN, EVE_RED,
-                              EVE_YELLOW,    EVE_PINK,  EVE_DEEP_PURPLE,
-                              EVE_THEAL,     EVE_MAUVE};
-
-const uint8_t g_ui8EveColorNum = sizeof(g_ui32EveColors) / sizeof(uint32_t);
-
 static const char TASK_NAME[] = "main_task";
-
-const char *g_BMP_FILENAME = "TEST5.BMP";
-// const char *g_FONT_FILENAME = "ROBOTO.BDF";
-// const char *g_FONT_FILENAME = "BEBAS32.BDF";
-const char *FONT_BEBAS_PATH = "BEBAS32.BDF";
-const char *FONT_ROBOTO_PATH = "ROBOTO.BDF";
 
 #ifdef DEBUG
 void __error__(char *pcFilename, uint32_t ui32Line) {}
 #endif
 
-//*****************************************************************************
-//
-// Configure the EPI and its pins.  This must be called before boot command is
-// invoked.
-//
-//*****************************************************************************
 int ConfigureEPI(void) {
   //
   // The EPI0 peripheral must be enabled for use.
@@ -305,10 +280,6 @@ void ConfigureUART(void) {
   UARTStdioConfig(0, 115200, g_ui32SysClock);
 }
 
-void task01(void) { TIVA_LOGI(TASK_NAME, "Task01 executing!"); }
-
-void task02(void) { TIVA_LOGI(TASK_NAME, "Task02 executing!"); }
-
 int main(void) {
 
   // Enable all the ports
@@ -322,17 +293,6 @@ int main(void) {
   ConfigureUART();
 
   MAP_IntMasterEnable();
-  // Initial message
-  UARTprintf("\n");
-  TIVA_LOGI(
-      TASK_NAME,
-      "\t\t-------------------------------------------------------------");
-  TIVA_LOGI(
-      TASK_NAME,
-      "\t\t---------------------STARTING APPLICATION--------------------");
-  TIVA_LOGI(
-      TASK_NAME,
-      "\t\t-------------------------------------------------------------\n");
   TIVA_LOGI(TASK_NAME, "Starting application...");
 
   Gfx_initEngine(LCD_WIDTH, LCD_HEIGHT);
@@ -345,176 +305,45 @@ int main(void) {
   HAL_SPI_Init();
   TIVA_LOGI(TASK_NAME, "SPI set up successfully!");
   TIVA_LOGI(TASK_NAME, "Initial FT81x state...");
-#ifdef DEBUG_LV_2
-  EVE_Util_DebugReport();
-#endif
   SysCtlDelay(MS_2_CLK(500));
   TIVA_LOGI(TASK_NAME, "Awaking screen...");
   API_WakeUpScreen();
   TIVA_LOGI(TASK_NAME, "Screen is awake!");
   SysCtlDelay(MS_2_CLK(1000));
-#ifdef FT81x_SPI_QUICK_TEST
   TIVA_LOGI(TASK_NAME, "Running Quick FT81x SPI verification... ");
   QuickSanityCheck();
-#endif // FT81x_SPI_QUICK_TEST
-#ifdef FT81x_SPI_FULL_TEST
-  TIVA_LOGI(TASK_NAME, "Running Full Ft81x SPI verification... ");
-  RunAllSPITests();
-#endif
 
-#ifdef DEBUG_LV_2
-  EVE_Util_DebugReport();
-#endif
   TIVA_LOGI(TASK_NAME, "Clearing the screen to 0x%x color", EVE_PINK);
   EVE_MemWrite8(REG_PWM_DUTY, 128);
+  EVE_MemWrite8(REG_CSPREAD, 0);
   gfx_start(EVE_PINK);
   gfx_end();
-#ifdef DEBUG_LV_2
-  TIVA_LOGI(TASK_NAME, "FT81x State before loading the image\n");
-  EVE_Util_DebugReport();
-#endif
-
-  // Create layers
-  pixel16_t *pSquaresLayer;
-
-  pSquaresLayer =
-      (pixel16_t *)malloc(sizeof(pixel16_t) * LCD_WIDTH * LCD_HEIGHT);
-  memset(pSquaresLayer, 0, LCD_WIDTH * LCD_HEIGHT * 2);
-
-  // Load image into layer
-  BitmapHandler_t sBitmapHandler;
-  SDSPI_pwd(0, NULL);
-  SDSPI_ls(0, NULL);
-  // int iFetchFileStatus = SDSPI_FetchFile(g_BMP_FILENAME, g_ui32BitmapSDRAM,
-  // BMP_TEST_1_SIZE);
-  SDSPI_FetchBitmap(g_BMP_FILENAME, &sBitmapHandler, 800 * 480 * 2);
-
-  // Load only Space (32) through Tilde (126)
-  if (SDSPI_FetchBDF(&g_SystemFont[FONT_ROBOTO], FONT_ROBOTO_PATH, 32, 126)) {
-    TIVA_LOGI(TASK_NAME, "Roboto Font parsed successfully! Pool size: %u bytes",
-              g_SystemFont[FONT_ROBOTO].poolSize);
-  } else {
-    TIVA_LOGE(TASK_NAME, "Failed to load or parse BDF font.");
-  }
-  if (SDSPI_FetchBDF(&g_SystemFont[FONT_BEBAS], FONT_BEBAS_PATH, 32, 126)) {
-    TIVA_LOGI(TASK_NAME, "Bebas Font parsed successfully! Pool size: %u bytes",
-              g_SystemFont[FONT_BEBAS].poolSize);
-  } else {
-    TIVA_LOGE(TASK_NAME, "Failed to load or parse BDF font.");
-  }
 
   initializeSquaresPhysics(); // Initialize squares
 
-  StartCycleCounter();
+  while (!gfx_fontLoad()) {
+    SysCtlDelay(MS_2_CLK(100));
+  }
 
-  uint32_t ui32Counter = 0;
-  char pcCounter[10];
+  gfx_calibrate();
 
-  // =========================================================================
-  // 1. INITIALIZATION & STATIC SETUP (Before the while loop)
-  // =========================================================================
+  StartCycleCounter(); // The DWT will be our clock source
 
-  // A. Wipe buffer with the heavy background image once
-  memcpy(g_pDrawingBuffer, sBitmapHandler.ui8Pixels, 800 * 480 * 2);
-  //drawSquares(g_pDrawingBuffer);
+  initHomeForm();
 
-  // B. Draw all STATIC elements that never change
-  gfx_DrawString(g_pDrawingBuffer, FONT_BEBAS, 300, 400, "STATIC TITLE",
-                 0xFD20, 2, ALIGN_CENTER);
-  gfx_DrawString(g_pDrawingBuffer, FONT_ROBOTO, 200, 100, "TELECONTROL",
-                 C_BROWN, 2, ALIGN_CENTER);
+  // Send initial full frame
+  formManagerComposite(g_pDrawingBuffer);
 
-  // C. Initialize the button state
-  gfx_Button btn = {
-      .name = "btn1",
-      .backgroundColor = C_ORANGE,
-      .textColor = C_BLACK,
-      .label = "PRESS ME!",
-      .font = FONT_BEBAS,
-      .fontScale = 2,
-      .size = (Size){.width = 240, .height = 160},
-      .pos = (Position){.x = LCD_WIDTH / 2 - 120, .y = LCD_HEIGHT / 2 - 80},
-      .state = BTN_STATE_NORMAL, // Start normal!
-      .radius = 8,
-      .borderWidth = 1,
-      .borderColor = C_INDIGO};
-  gfx_drawButton(g_pDrawingBuffer, &btn);
-
-  // D. Send this baseline screen to the FT81x using the heavy, blocking render
   Gfx_render();
 
-  // Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, 800, 480);
-
-  // // Kickstart the engine
-  // Gfx_RenderTask(); 
-
-  // // Pump the state machine until all 480 rows are successfully sent
-  // // This blocks just long enough to ensure the baseline is drawn before the loop starts
-  // while (g_RenderEngine.state != RENDER_IDLE) {
-  //     Gfx_RenderTask();
-  // }
-
-  // =========================================================================
-  // 2. THE HIGH-SPEED DIRTY RECTANGLE LOOP
-  // =========================================================================
+  gestureEngineInit();
+  
   while (1) {
-    uint32_t ui32ProcStart = DWTGetCycleCounter();
+	Gfx_RenderTask();
 
-    // 1. ALWAYS service the DMA State Machine so it can pump rows to the SPI
-    Gfx_RenderTask();
+    gestureEngineTask();
 
-    // 2. Only calculate UI updates if the DMA has finished the previous jobs
-    if (g_RenderEngine.state == RENDER_IDLE) 
-	{
+  } 
 
-      // -----------------------------------------------------------------
-      // WIDGET UPDATE 1: The Ticking Counter
-      // -----------------------------------------------------------------
-      // A. Erase the old number by restoring JUST the background behind it.
-      // (Assuming the counter box is around X:650, Y:30, Width:100, Height:40)
-      Gfx_RestoreBackground_Fast((pixel16_t *)sBitmapHandler.ui8Pixels,
-                                 g_pDrawingBuffer, 650, 30, 250, 160);
-
-      // B. Draw the new number
-      Helper_FloatToString(pcCounter, ui32Counter, 0, true);
-      gfx_DrawString(g_pDrawingBuffer, FONT_ROBOTO, 700, 50, pcCounter,
-                     C_INDIGO, 1, ALIGN_CENTER);
-
-      // C. Queue this tiny rectangle to be sent over SPI
-      Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 650, 30, 100, 40);
-
-      // -----------------------------------------------------------------
-      // WIDGET UPDATE 2: The Button
-      // -----------------------------------------------------------------
-      // Let's simulate the button being pressed every 50 frames
-      bool simulateTouch = (ui32Counter % 10 == 0);
-
-      if (simulateTouch) {
-        // Toggle state
-        btn.state = (btn.state == BTN_STATE_NORMAL) ? BTN_STATE_PRESSED
-                                                    : BTN_STATE_NORMAL;
-
-      	Gfx_RestoreBackground_Fast((pixel16_t *)sBitmapHandler.ui8Pixels,
-                                 g_pDrawingBuffer, LCD_WIDTH / 2 - 150, LCD_HEIGHT / 2 - 100, 290, 190);
-        // Redraw the button (your gfx_drawButton handles the colors based on
-        // state)
-        gfx_drawButton(g_pDrawingBuffer, &btn);
-
-        // Queue the button's bounding box to be sent over SPI.
-        // *CRITICAL*: Account for the borderWidth so you don't chop off the
-        // edges!
-        int bboxX = btn.pos.x - btn.borderWidth;
-        int bboxY = btn.pos.y - btn.borderWidth;
-        int bboxW = btn.size.width + (btn.borderWidth * 2);
-        int bboxH = btn.size.height + (btn.borderWidth * 2);
-
-        Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX, bboxY, bboxW, bboxH);
-      }
-
-      ui32Counter++;
-    } // End of RENDER_IDLE block
-
-    // Simulate other system tasks running freely in the background
-    SysCtlDelay(MS_2_CLK(10));
-  }
 }
+

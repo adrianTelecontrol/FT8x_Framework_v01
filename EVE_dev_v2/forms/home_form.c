@@ -12,7 +12,7 @@
 
 #include "home_form.h"
 
-static Surface g_sHomeSurface;
+static gfx_Canvas g_sHomeSurface;
 
 static widget_type_e g_eLockedWidgetType = WD_TYPE_NULL;
 static void *g_pLockedWidget = NULL;

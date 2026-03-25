@@ -181,6 +181,33 @@
                     ]
                 }
             ]
+        },
+        {
+            "name": "UI_widgets_dev_cont_section_update",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "UI_widgets_dev_cont_section_update",
+                "resourceId": "/UI_widgets_dev_cont_section_update"
+            }
+        },
+        {
+            "name": "UI_widgets_dev_touch",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "UI_widgets_dev_touch",
+                "resourceId": "/UI_widgets_dev_touch"
+            }
+        },
+        {
+            "name": "UI_Flame_test_new",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "UI_Flame_test_new",
+                "resourceId": "/UI_Flame_test_new"
+            }
         }
     ]
 }
