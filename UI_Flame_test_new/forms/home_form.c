@@ -42,11 +42,18 @@ void pushButtonOnPosChanged(gfx_Button *btn, Position newPos)
         btn->pos.x = newPos.x;
         btn->pos.y = newPos.y;
         gfx_initRegTouch((void *)btn, WD_TYPE_BUTTON);
-	    
+	    btn->state = BTN_STATE_PRESSED;
+		
 		btn->bIsDirty = true;
     }
 
     //System_printf("Button pos: (%d, %d)", btn->pos.x, btn->pos.y);
+}
+
+void pushButtonOnRelease(gfx_Button *btn)
+{
+    btn->state = BTN_STATE_NORMAL;
+	btn->bIsDirty = true;
 }
 
 void initHomeForm(void)
@@ -77,9 +84,9 @@ void initHomeForm(void)
         .pos.y = LCD_HEIGHT / 2 - BUTTON_HEIGHT / 2,        
         .oldPos.x = LCD_WIDTH / 2 - BUTTON_WIDTH / 2,
         .oldPos.y = LCD_HEIGHT / 2 - BUTTON_HEIGHT / 2,        
-        .backgroundColor = EVE_GREEN,
+        .backgroundColor = EVE_PINK,
         .textColor = EVE_WHITE,
-		.borderWidth = 1,
+		.borderWidth = 0,
         .onPosChanged = pushButtonOnPosChanged,
         .onClicked = pushButtonOnClicked,
 		.radius = 10,
@@ -108,10 +115,10 @@ void initHomeForm(void)
 
 	thirdWidget.eWidgetType = WD_TYPE_LABEL;
 	thirdWidget.pvWidget = (void *)&(gfx_Label){
-		.text = "Titulo",
+		.text = "TITULO",
 		.pos.x = LCD_WIDTH / 2,
 		.pos.y = 50,
-		.scale = 2,
+		.scale = 1,
 		.font = FONT_BEBAS,
 		.alignment = ALIGN_CENTER,
 		.textColor = EVE_GREEN_APPLE,

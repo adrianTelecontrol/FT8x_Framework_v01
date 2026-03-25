@@ -20,7 +20,6 @@
 #include <inc/hw_ssi.h>
 #include <inc/hw_types.h>
 
-
 #include "EVE.h"
 #include "FT8xx_params.h"
 #include "forms_manager.h"
@@ -28,7 +27,6 @@
 #include "graphics_engine.h"
 #include "hal_spi.h"
 #include "helpers.h"
-
 
 // --- CONFIGURATION ---
 #define GFX_WIDTH 800
@@ -700,11 +698,30 @@ bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
   switch (widget->eWidgetType) {
   case WD_TYPE_BUTTON: {
     gfx_Button *btn = (gfx_Button *)widget->pvWidget;
-    // Account for borders expanding the visual size of the button
-    *x = btn->pos.x - btn->borderWidth;
+
+    // 1. Calcular el desbordamiento del texto (Alpha-Blending Trap Fix)
+    int16_t textWidth = 0;
+    if (btn->label != NULL) {
+      // NOTA: Ajusta el '10' por el ancho promedio en píxeles de tu fuente,
+      // o usa la función de tu librería para medir el string si la tienes.
+      textWidth = strlen(btn->label) * 10;
+    }
+
+    int16_t overflowX = 0;
+    if (textWidth > btn->size.width) {
+      overflowX = (textWidth - btn->size.width) / 2;
+      overflowX += 4; // Padding extra para el anti-aliasing de la fuente
+    }
+
+    // 2. Calcular la huella total (Footprint + Overflow + Cinematic Offset)
+    *x = btn->pos.x - overflowX - btn->borderWidth;
     *y = btn->pos.y - btn->borderWidth;
-    *w = btn->size.width + (btn->borderWidth * 2);
-    *h = btn->size.height + (btn->borderWidth * 2);
+
+    // Sumamos 2 píxeles extra a W y H para acomodar el desplazamiento
+    // cuando el botón pasa a estado BTN_STATE_PRESSED.
+    *w = btn->size.width + (overflowX * 2) + (btn->borderWidth * 2) + 2;
+    *h = btn->size.height + (btn->borderWidth * 2) + 2;
+
     return true;
   }
   case WD_TYPE_RECT: {
@@ -719,10 +736,7 @@ bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
     gfx_Label *lbl = (gfx_Label *)widget->pvWidget;
     *x = lbl->pos.x;
     *y = lbl->pos.y;
-    // Note: Since labels usually don't have a fixed 'size' struct,
-    // you will need to calculate the width based on string length and font
-    // scale. These are placeholder values; replace them with your font metric
-    // math.
+    // Reemplaza con la métrica real de tu fuente
     *w = 100;
     *h = 20;
     return true;
@@ -823,38 +837,41 @@ void Gfx_RenderTask(void) {
           if (btn->bIsDirty) {
             btn->bIsDirty = false;
 
-            // 1. Get the width and height (including your border/text overflow
-            // math!)
-            int16_t w = btn->size.width + (btn->borderWidth * 2);
-            int16_t h = btn->size.height + (btn->borderWidth * 2);
+            // 1. Calculate text overflow (matching the bounds function)
+            int16_t textWidth =
+                (btn->label != NULL) ? strlen(btn->label) * 10 : 0;
+            int16_t overflowX = 0;
+            if (textWidth > btn->size.width) {
+              overflowX = ((textWidth - btn->size.width) / 2) + 4;
+            }
 
-            // 2. Define the OLD bounds
-            int16_t oldX = btn->oldPos.x - btn->borderWidth;
+            // 2. Calculate TRUE width and height (INCLUDING the +2 cinematic
+            // offset!)
+            int16_t w =
+                btn->size.width + (overflowX * 2) + (btn->borderWidth * 2) + 2;
+            int16_t h = btn->size.height + (btn->borderWidth * 2) + 2;
+
+            // 3. Define the OLD bounds (using overflow)
+            int16_t oldX = btn->oldPos.x - overflowX - btn->borderWidth;
             int16_t oldY = btn->oldPos.y - btn->borderWidth;
 
-            // 3. Define the NEW bounds
-            int16_t newX = btn->pos.x - btn->borderWidth;
+            // 4. Define the NEW bounds (using overflow)
+            int16_t newX = btn->pos.x - overflowX - btn->borderWidth;
             int16_t newY = btn->pos.y - btn->borderWidth;
 
-            // 4. THE MAGIC: Calculate the Union (Merged Bounding Box)
-            // Find the furthest left X and the highest Y
+            // 5. Calculate the Union
             bboxX = (oldX < newX) ? oldX : newX;
             bboxY = (oldY < newY) ? oldY : newY;
 
-            // Find the furthest right edge and lowest edge
             int16_t rightEdge =
                 ((oldX + w) > (newX + w)) ? (oldX + w) : (newX + w);
             int16_t bottomEdge =
                 ((oldY + h) > (newY + h)) ? (oldY + h) : (newY + h);
 
-            // Calculate the final width and height of the merged wipe area
             bboxW = rightEdge - bboxX;
             bboxH = bottomEdge - bboxY;
 
-            // 5. Synchronize memory so it doesn't keep stretching on the next
-            // frame
             btn->oldPos = btn->pos;
-
             isDirty = true;
           }
         }

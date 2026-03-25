@@ -33,6 +33,30 @@
     }                                                                          \
   } while (0)
 
+uint16_t blendRGB565(uint16_t colorTop, uint16_t colorBottom, int16_t currentY, int16_t totalH) {
+    if (totalH <= 1) return colorTop; // Protección contra división por cero
+
+    // 1. Extraer canales (desempaquetar 5-6-5)
+    int32_t rT = (colorTop >> 11) & 0x1F;
+    int32_t gT = (colorTop >> 5)  & 0x3F;
+    int32_t bT = colorTop         & 0x1F;
+
+    int32_t rB = (colorBottom >> 11) & 0x1F;
+    int32_t gB = (colorBottom >> 5)  & 0x3F;
+    int32_t bB = colorBottom         & 0x1F;
+
+    // 2. Calcular la proporción (Escalada por 256 para evitar floats)
+    int32_t ratio = (currentY * 256) / totalH; 
+
+    // 3. Interpolar canales
+    uint16_t r = rT + (((rB - rT) * ratio) >> 8);
+    uint16_t g = gT + (((gB - gT) * ratio) >> 8);
+    uint16_t b = bT + (((bB - bT) * ratio) >> 8);
+
+    // 4. Empaquetar de vuelta a RGB565
+    return (r << 11) | (g << 5) | b;
+}
+
 bool gfx_initRegTouch(void *widget, widget_type_e type) {
   if (type == WD_TYPE_BUTTON) {
     gfx_Button *wd = (gfx_Button *)widget;
@@ -469,6 +493,46 @@ void gfx_fillRoundRect(pixel16_t *pBuf, int16_t x, int16_t y, int16_t w,
   gfx_fillCircleHelper(pBuf, x + r, y + r, r, 2, h - 2 * r - 1, color);
 }
 
+void gfx_fillGradientRoundRect(pixel16_t *pBuf, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t colorTop, uint16_t colorBottom) {
+    int16_t max_radius = ((w < h) ? w : h) / 2;
+    if (r > max_radius) r = max_radius;
+    if (r > 32) r = 32; // Límite de seguridad para el arreglo
+
+    // 1. Precalcular los recortes de las esquinas para evitar usar sqrt()
+    int16_t cornerX[32] = {0};
+	int16_t i = 0;
+    for (; i < r; i++) {
+        int32_t dy = r - i;
+        int32_t r2 = r * r;
+        int32_t dx = 0;
+        
+        // Algoritmo rápido para encontrar la X del círculo en esta Y
+        while ((dx * dx) + (dy * dy) <= r2) { dx++; }
+        dx--; 
+        
+        cornerX[i] = r - dx; // Píxeles vacíos en los bordes
+    }
+
+    // 2. Renderizar fila por fila de arriba a abajo
+	int16_t row = 0;
+    for (; row < h; row++) {
+        uint16_t rowColor = blendRGB565(colorTop, colorBottom, row, h);
+
+        int16_t startX = 0;
+        if (row < r) {
+            startX = cornerX[row];         // Curvatura superior
+        } else if (row >= h - r) {
+            startX = cornerX[h - 1 - row]; // Curvatura inferior
+        }
+
+        int16_t drawW = w - (startX * 2);
+        int16_t drawX = x + startX;
+
+        // Dibujar la línea horizontal para esta fila
+        gfx_fillRect(pBuf, drawX, y + row, drawW, 1, rowColor);
+    }
+}
+
 void gfx_drawTriangle(pixel16_t *pBuf, int16_t x0, int16_t y0, int16_t x1,
                       int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
   gfx_writeLine(pBuf, x0, y0, x1, y1, color);
@@ -560,6 +624,7 @@ void gfx_fillTriangle(pixel16_t *pBuf, int16_t x0, int16_t y0, int16_t x1,
 //
 // **************** Widget Functions **************************
 //
+/*
 void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
   if (!pBuf || !btn)
     return;
@@ -598,7 +663,212 @@ void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
   gfx_DrawString(pBuf, btn->font, btn->pos.x + btn->size.width / 2.0f,
                  btn->pos.y + btn->size.height / 2.0f, btn->label,
                  activeTextColor, btn->fontScale, ALIGN_CENTER);
+}*/
+
+
+// Pre-calcula los píxeles vacíos en el borde de la esquina para evitar sqrt() en el bucle principal.
+// cornerX guarda la 'X delta' (píxeles vacíos) para cada 'dy' (fila de la esquina).
+static void gfx_getCornerEmptyPixels(int16_t *cornerX, int16_t r) {
+    if (r <= 0) return;
+    if (r > 32) r = 32; // Límite de seguridad del array
+
+	int16_t i = 0;
+    for (; i < r; i++) {
+        int32_t dy = r - i;
+        int32_t r2 = r * r;
+        int32_t dx = 0;
+        
+        // Algoritmo rápido de círculo entero: encontrar la X máxima dentro del círculo a esta Y.
+        while ((dx * dx) + (dy * dy) <= r2) { dx++; }
+        dx--; 
+        
+        cornerX[i] = r - dx; // Número de píxeles vacíos en el borde
+    }
 }
+
+// Dibuja un marco de contorno redondeado geométricamente perfecto usando la misma lógica que el relleno de degradado.
+// x, y, w, h representan la huella GENERAL (footprint) del objeto incluyendo el borde.
+void gfx_drawRoundOutline(pixel16_t *pBuf, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r_outer, int16_t borderWidth, uint16_t color) {
+    if (!pBuf || borderWidth <= 0) return;
+
+    // Geometría Exterior
+    int16_t max_r_outer = ((w < h) ? w : h) / 2;
+    if (r_outer > max_r_outer) r_outer = max_r_outer;
+    if (r_outer > 32) r_outer = 32;
+
+    // Geometría Interior (donde encaja el fondo)
+    int16_t r_inner = r_outer - borderWidth;
+    if (r_inner < 0) r_inner = 0; // Si el borde es más grueso que el radio, la esquina interior es cuadrada.
+
+    // Límites para el área de relleno interior
+    int16_t innerXStart = x + borderWidth;
+    int16_t innerYEnd = x + w - borderWidth;
+    int16_t innerH = h - (borderWidth * 2);
+
+    // Pre-calcular curvaturas para ambos radios
+    int16_t emptyPixelsOuter[32] = {0};
+    int16_t emptyPixelsInner[32] = {0};
+    gfx_getCornerEmptyPixels(emptyPixelsOuter, r_outer);
+    gfx_getCornerEmptyPixels(emptyPixelsInner, r_inner);
+
+    // Renderizar fila por fila
+	int16_t row = 0;
+    for (; row < h; row++) {
+        
+        // Encontrar contorno exterior para esta fila
+        int16_t emptyOuterX = 0;
+        if (row < r_outer) {
+            emptyOuterX = emptyPixelsOuter[row];
+        } else if (row >= h - r_outer) {
+            emptyOuterX = emptyPixelsOuter[h - 1 - row];
+        }
+        int16_t drawStartX_outer = x + emptyOuterX;
+        int16_t drawEndX_outer = x + w - emptyOuterX;
+        int16_t drawW_outer = drawEndX_outer - drawStartX_outer;
+
+        // ¿Esta fila es puramente borde sólido (Top/Bottom)?
+        if (row < borderWidth || row >= (h - borderWidth)) {
+            // Dibujar la barra exterior completa
+            gfx_fillRect(pBuf, drawStartX_outer, y + row, drawW_outer, 1, color);
+        } else {
+            // Esta fila pasa por la sección central (con "agujero" para el fondo).
+            // Dibujar dos segmentos (borde izquierdo y derecho).
+            
+            int16_t innerRow = row - borderWidth; // Normalizar a coordenada y del rectángulo interior
+
+            // Encontrar lógica de contorno interior (donde empieza el fondo)
+            int16_t emptyInnerX = 0;
+            if (innerRow < r_inner) {
+                emptyInnerX = emptyPixelsInner[innerRow];
+            } else if (innerRow >= (innerH - r_inner)) {
+                // Ajustar para la curva inferior del *rectángulo interior*
+                emptyInnerX = emptyPixelsInner[innerH - 1 - innerRow];
+            }
+
+            int16_t startX_inner = innerXStart + emptyInnerX;
+            int16_t endX_inner = x + w - borderWidth - emptyInnerX;
+
+            // Dibujar Segmento Izquierdo
+            gfx_fillRect(pBuf, drawStartX_outer, y + row, startX_inner - drawStartX_outer, 1, color);
+
+            // Dibujar Segmento Derecho
+            gfx_fillRect(pBuf, endX_inner, y + row, drawEndX_outer - endX_inner, 1, color);
+        }
+    }
+}
+
+void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
+    if (!pBuf || !btn) return;
+
+    // 1. Definir colores base
+    uint16_t activeBorderColor = btn->borderColor;
+    uint16_t activeTextColor = btn->textColor;
+    uint16_t topColor = btn->backgroundColor;
+    uint16_t bottomColor = DARKEN_COLOR(btn->backgroundColor); 
+
+    // 2. Determinar el desplazamiento cinemático según el estado
+    int16_t offset = 0;
+    if (btn->state == BTN_STATE_PRESSED) {
+        offset = 2; // Todo el botón (borde, fondo y texto) bajará 2 píxeles
+        
+        // Invertir el gradiente para simular hundimiento físico
+        topColor = DARKEN_COLOR(btn->backgroundColor); 
+        bottomColor = btn->backgroundColor; 
+        activeBorderColor = DARKEN_COLOR(btn->borderColor);
+        
+    } else if (btn->state == BTN_STATE_DISABLED) {
+        topColor = 0x4208;    // Gris mate claro
+        bottomColor = 0x2104; // Gris mate oscuro
+        activeBorderColor = 0x8410;
+        activeTextColor = 0x8410;
+    }
+
+    // 3. Calcular la huella del Borde APLICANDO el offset cinemático
+    int16_t footprintX = btn->pos.x - btn->borderWidth + offset;
+    int16_t footprintY = btn->pos.y - btn->borderWidth + offset;
+    int16_t footprintW = btn->size.width + (btn->borderWidth * 2);
+    int16_t footprintH = btn->size.height + (btn->borderWidth * 2);
+
+    // Unificar Radios para geometría concéntrica perfecta
+    int16_t r_outer = btn->radius + btn->borderWidth;
+
+    // 4. Renderizar Borde (Chasis unificado)
+    if (btn->borderWidth > 0) {
+        gfx_drawRoundOutline(pBuf, footprintX, footprintY, footprintW, footprintH, 
+                             r_outer, btn->borderWidth, activeBorderColor);
+    }
+
+    // 5. Renderizar Fondo (Con gradiente lineal vertical)
+    gfx_fillGradientRoundRect(pBuf, 
+                              btn->pos.x + offset, 
+                              btn->pos.y + offset, 
+                              btn->size.width, 
+                              btn->size.height, 
+                              btn->radius, topColor, bottomColor);
+
+    // 6. Renderizar Etiqueta (Centrada y desplazada)
+    if (btn->label != NULL) {
+        gfx_DrawString(pBuf, btn->font, 
+                       btn->pos.x + offset + (btn->size.width / 2.0f),
+                       btn->pos.y + offset + (btn->size.height / 2.0f), 
+                       btn->label, activeTextColor, btn->fontScale, ALIGN_CENTER);
+    }
+}
+
+/*
+void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
+    if (!pBuf || !btn) return;
+
+    // Calcular la huella total del objeto incluyendo borde
+    int16_t footprintX = btn->pos.x - btn->borderWidth;
+    int16_t footprintY = btn->pos.y - btn->borderWidth;
+    int16_t footprintW = btn->size.width + (btn->borderWidth * 2);
+    int16_t footprintH = btn->size.height + (btn->borderWidth * 2);
+
+    // Colores base
+    uint16_t activeBorderColor = btn->borderColor;
+    uint16_t activeTextColor = btn->textColor;
+    uint16_t topColor = btn->backgroundColor;
+    uint16_t bottomColor = DARKEN_COLOR(btn->backgroundColor); 
+
+    int16_t offset = 0;
+
+    // Manejo de estado cinemático
+    if (btn->state == BTN_STATE_PRESSED) {
+        offset = 2; // Cinemática
+        topColor = DARKEN_COLOR(btn->backgroundColor); // Invertir gradiente
+        bottomColor = btn->backgroundColor;
+        activeBorderColor = DARKEN_COLOR(btn->borderColor);
+    } else if (btn->state == BTN_STATE_DISABLED) {
+        topColor = 0x4208;
+        bottomColor = 0x2104;
+        activeBorderColor = 0x8410;
+        activeTextColor = 0x8410;
+    }
+
+    // Unificar Radios
+    int16_t r_outer = btn->radius + btn->borderWidth;
+
+    // 1. Dibujar el Borde Unificado (Chasis estático)
+    // Usamos 'r_outer' y 'btn->borderWidth' para la matemática concéntrica
+    gfx_drawRoundOutline(pBuf, footprintX, footprintY, footprintW, footprintH, r_outer, btn->borderWidth, activeBorderColor);
+
+    // 2. Dibujar el Fondo con Gradiente (Centro móvil)
+    // Usa los valores puros 'btn->pos' y 'btn->radius' que definen el interior
+    // y que son geométricamente concéntricos con el marco interior de gfx_drawRoundOutline.
+    gfx_fillGradientRoundRect(pBuf, 
+                              btn->pos.x + offset, 
+                              btn->pos.y + offset, 
+                              btn->size.width, 
+                              btn->size.height, 
+                              btn->radius, topColor, bottomColor);
+
+    // 3. Dibujar la Etiqueta (Centro móvil)
+    gfx_DrawString(pBuf, btn->font, 
+                   btn->pos.x + offset + (btn->size.width / 2.0f),
+                   btn->pos.y + offset + (btn->size.height / 2.0f), 
+                   btn->label, activeTextColor, btn->fontScale, ALIGN_CENTER);
+}*/
 
 void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb)
 {

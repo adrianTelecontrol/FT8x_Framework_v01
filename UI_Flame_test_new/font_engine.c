@@ -12,7 +12,10 @@
 
 #include "font_engine.h"
 
-const char *FONT_BEBAS_PATH = "BEBAS32.BDF";
+
+//const char *FONT_BEBAS_PATH = "BEBAS32.BDF";
+// const char *FONT_BEBAS_PATH = "FONTS/INTER/INTREG32.bdf";
+const char *FONT_BEBAS_PATH = "FONTS/INTER/INTBLD48.bdf";
 const char *FONT_ROBOTO_PATH = "ROBOTO.BDF";
 
 static const char TASK_NAME[] = "fontEngine";
