@@ -493,7 +493,7 @@ void DisplayBitmap(void) {
 
   API_LIB_BeginCoProList();
   API_CMD_DLSTART();
-  API_CLEAR_COLOR_RGB(11, 19, 30);
+  API_CLEAR_COLOR_RGB(255, 19, 30);
   API_CLEAR(1, 1, 1);
   API_COLOR_RGB(255, 255, 255);
 
@@ -759,6 +759,8 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
   // snippets) Gfx_RestoreBackground_Fast((pixel16_t *)sBitmapHandler.ui8Pixels,
   //                            psPixelBuffer, dirtyX, dirtyY, dirtyW, dirtyH);
   int16_t y = dirtyY;
+  pixel16_t pxBlack;
+  pxBlack.u16 = 0x0000; 
   for (; y < dirtyY + dirtyH; y++) {
     int16_t x = dirtyX;
     for (; x < dirtyX + dirtyW; x++) {
@@ -768,6 +770,7 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
         // Calculate the 1D linear index for the 2D coordinate
         uint32_t linearIndex = (y * LCD_WIDTH) + x;
         psPixelBuffer[linearIndex] = (pixel16_t)srf->ui16BackgroundColor;
+        //psPixelBuffer[linearIndex] = pxBlack;
       }
     }
   }

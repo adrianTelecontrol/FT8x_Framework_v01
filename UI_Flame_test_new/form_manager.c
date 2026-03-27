@@ -82,15 +82,15 @@ bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture)
             g_eLockedWidgetType = WD_TYPE_NULL;
             break;
 
-        case GESTURE_CLICK:
+        case GESTURE_PRESSED:
 			temp = g_psCurrentForm->psWidgets;
             while (temp != NULL) 
             {
                 if(gfx_isWidgetTouched(&temp->sWidget, touchStatus))
                 {
                     gfx_Button *btn = ((gfx_Button *)temp->sWidget.pvWidget);
-                    if(btn->onClicked != NULL)
-                        btn->onClicked(btn);
+                    if(btn->onPressed != NULL)
+                        btn->onPressed(btn);
 
                     break;
                 }

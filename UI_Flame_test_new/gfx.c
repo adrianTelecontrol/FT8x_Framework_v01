@@ -13,7 +13,7 @@
 #include "FT8xx_params.h"
 #include "font_engine.h"
 #include "graphics_engine.h"
-
+#include "gfx_theme.h"
 
 #include "gfx.h"
 
@@ -133,6 +133,12 @@ bool gfx_compositeFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer) {
   if (srf == NULL) {
     UARTprintf("Cannot render canvas! Is empty.");
     return false;
+  }
+  
+  uint32_t i = 0;
+  for(; i < LCD_WIDTH * LCD_HEIGHT; i++)
+  {
+	psPixelBuffer[i].u16 = srf->ui16BackgroundColor;	
   }
 
   gfx_GenericWidgetNode *iter = srf->psWidgets;
@@ -758,47 +764,55 @@ void gfx_drawRoundOutline(pixel16_t *pBuf, int16_t x, int16_t y, int16_t w, int1
 }
 
 void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
-    if (!pBuf || !btn) return;
+    if (!pBuf || !btn || !g_pCurrentTheme) return;
 
-    // 1. Definir colores base
-    uint16_t activeBorderColor = btn->borderColor;
-    uint16_t activeTextColor = btn->textColor;
-    uint16_t topColor = btn->backgroundColor;
-    uint16_t bottomColor = DARKEN_COLOR(btn->backgroundColor); 
+    // 1. Resolve colors semantically from the active theme
+    uint16_t baseBgColor;
+    uint16_t baseTextColor = g_pCurrentTheme->palette.textMain;
+    uint16_t baseBorderColor = g_pCurrentTheme->palette.border;
 
-    // 2. Determinar el desplazamiento cinemático según el estado
-    int16_t offset = 0;
-    if (btn->state == BTN_STATE_PRESSED) {
-        offset = 2; // Todo el botón (borde, fondo y texto) bajará 2 píxeles
-        
-        // Invertir el gradiente para simular hundimiento físico
-        topColor = DARKEN_COLOR(btn->backgroundColor); 
-        bottomColor = btn->backgroundColor; 
-        activeBorderColor = DARKEN_COLOR(btn->borderColor);
-        
-    } else if (btn->state == BTN_STATE_DISABLED) {
-        topColor = 0x4208;    // Gris mate claro
-        bottomColor = 0x2104; // Gris mate oscuro
-        activeBorderColor = 0x8410;
-        activeTextColor = 0x8410;
+    switch (btn->style) {
+        case STYLE_PRIMARY:
+            baseBgColor = g_pCurrentTheme->palette.primary;
+            break;
+        case STYLE_DANGER:
+            baseBgColor = g_pCurrentTheme->palette.danger;
+            break;
+        case STYLE_DEFAULT:
+        default:
+            baseBgColor = g_pCurrentTheme->palette.surface;
+            break;
     }
 
-    // 3. Calcular la huella del Borde APLICANDO el offset cinemático
+    // 2. Apply Physical State Modifiers (Cinematic shift & darken)
+    uint16_t topColor = baseBgColor;
+    uint16_t bottomColor = DARKEN_COLOR(baseBgColor);
+    int16_t offset = 0;
+
+    if (btn->state == BTN_STATE_PRESSED) {
+        offset = 2;
+        topColor = DARKEN_COLOR(baseBgColor);
+        bottomColor = baseBgColor;
+        baseBorderColor = DARKEN_COLOR(baseBorderColor);
+    } else if (btn->state == BTN_STATE_DISABLED) {
+        topColor = 0x4208;
+        bottomColor = 0x2104;
+        baseBorderColor = 0x8410;
+        baseTextColor = g_pCurrentTheme->palette.textMuted; // Use theme's muted color
+    }
+
+    // 3. Calculate footprints and render the chassis
     int16_t footprintX = btn->pos.x - btn->borderWidth + offset;
     int16_t footprintY = btn->pos.y - btn->borderWidth + offset;
     int16_t footprintW = btn->size.width + (btn->borderWidth * 2);
     int16_t footprintH = btn->size.height + (btn->borderWidth * 2);
-
-    // Unificar Radios para geometría concéntrica perfecta
     int16_t r_outer = btn->radius + btn->borderWidth;
 
-    // 4. Renderizar Borde (Chasis unificado)
     if (btn->borderWidth > 0) {
         gfx_drawRoundOutline(pBuf, footprintX, footprintY, footprintW, footprintH, 
-                             r_outer, btn->borderWidth, activeBorderColor);
+                             r_outer, btn->borderWidth, baseBorderColor);
     }
 
-    // 5. Renderizar Fondo (Con gradiente lineal vertical)
     gfx_fillGradientRoundRect(pBuf, 
                               btn->pos.x + offset, 
                               btn->pos.y + offset, 
@@ -806,73 +820,70 @@ void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
                               btn->size.height, 
                               btn->radius, topColor, bottomColor);
 
-    // 6. Renderizar Etiqueta (Centrada y desplazada)
+    // 4. Render the localized Font using the global Theme color
     if (btn->label != NULL) {
-        gfx_DrawString(pBuf, btn->font, 
-                       btn->pos.x + offset + (btn->size.width / 2.0f),
-                       btn->pos.y + offset + (btn->size.height / 2.0f), 
-                       btn->label, activeTextColor, btn->fontScale, ALIGN_CENTER);
+        int8_t fontId = -1;
+        
+        // Resolver el ID de la fuente según la jerarquía solicitada
+        switch (btn->typo) {
+            case TYPO_H1:      fontId = g_pCurrentTheme->fonts.h1; break;
+            case TYPO_H2:      fontId = g_pCurrentTheme->fonts.h2; break;
+            case TYPO_BODY:    fontId = g_pCurrentTheme->fonts.body; break;
+            case TYPO_CAPTION: fontId = g_pCurrentTheme->fonts.caption; break;
+            case TYPO_MONO:    fontId = g_pCurrentTheme->fonts.mono; break;
+        }
+        
+        // Si el motor SD logró cargar la fuente, la dibujamos
+        if (fontId >= 0) {
+            gfx_DrawString(pBuf, fontId, 
+                           btn->pos.x + offset + (btn->size.width / 2),
+                           btn->pos.y + offset + (btn->size.height / 2), 
+                           btn->label, baseTextColor, ALIGN_CENTER, 1);
+        }
     }
 }
 
-/*
-void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
-    if (!pBuf || !btn) return;
+void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb) {
+    if (!pBuf || !lb || !lb->text || !g_pCurrentTheme) return;
 
-    // Calcular la huella total del objeto incluyendo borde
-    int16_t footprintX = btn->pos.x - btn->borderWidth;
-    int16_t footprintY = btn->pos.y - btn->borderWidth;
-    int16_t footprintW = btn->size.width + (btn->borderWidth * 2);
-    int16_t footprintH = btn->size.height + (btn->borderWidth * 2);
-
-    // Colores base
-    uint16_t activeBorderColor = btn->borderColor;
-    uint16_t activeTextColor = btn->textColor;
-    uint16_t topColor = btn->backgroundColor;
-    uint16_t bottomColor = DARKEN_COLOR(btn->backgroundColor); 
-
-    int16_t offset = 0;
-
-    // Manejo de estado cinemático
-    if (btn->state == BTN_STATE_PRESSED) {
-        offset = 2; // Cinemática
-        topColor = DARKEN_COLOR(btn->backgroundColor); // Invertir gradiente
-        bottomColor = btn->backgroundColor;
-        activeBorderColor = DARKEN_COLOR(btn->borderColor);
-    } else if (btn->state == BTN_STATE_DISABLED) {
-        topColor = 0x4208;
-        bottomColor = 0x2104;
-        activeBorderColor = 0x8410;
-        activeTextColor = 0x8410;
+    // 1. Resolve Semantic Color from the Theme Palette
+    // Labels default to textMain, but can be overridden (e.g., a Red DANGER label)
+    uint16_t activeColor = g_pCurrentTheme->palette.textMain;
+    
+    switch (lb->style) {
+        case STYLE_PRIMARY:
+            activeColor = g_pCurrentTheme->palette.primary;
+            break;
+        case STYLE_DANGER:
+            activeColor = g_pCurrentTheme->palette.danger;
+            break;
+        case STYLE_SUCCESS:
+            activeColor = g_pCurrentTheme->palette.success;
+            break;
+        case STYLE_SECONDARY:
+            // Great for subtext/captions that shouldn't distract the user
+            activeColor = g_pCurrentTheme->palette.textMuted; 
+            break;
+        case STYLE_DEFAULT:
+        default:
+            activeColor = g_pCurrentTheme->palette.textMain;
+            break;
     }
 
-    // Unificar Radios
-    int16_t r_outer = btn->radius + btn->borderWidth;
+    // 2. Resolve Semantic Font ID from the Theme Typography
+    int8_t fontId = -1;
+    switch (lb->typo) {
+        case TYPO_H1:      fontId = g_pCurrentTheme->fonts.h1; break;
+        case TYPO_H2:      fontId = g_pCurrentTheme->fonts.h2; break;
+        case TYPO_BODY:    fontId = g_pCurrentTheme->fonts.body; break;
+        case TYPO_CAPTION: fontId = g_pCurrentTheme->fonts.caption; break;
+        case TYPO_MONO:    fontId = g_pCurrentTheme->fonts.mono; break;
+    }
 
-    // 1. Dibujar el Borde Unificado (Chasis estático)
-    // Usamos 'r_outer' y 'btn->borderWidth' para la matemática concéntrica
-    gfx_drawRoundOutline(pBuf, footprintX, footprintY, footprintW, footprintH, r_outer, btn->borderWidth, activeBorderColor);
-
-    // 2. Dibujar el Fondo con Gradiente (Centro móvil)
-    // Usa los valores puros 'btn->pos' y 'btn->radius' que definen el interior
-    // y que son geométricamente concéntricos con el marco interior de gfx_drawRoundOutline.
-    gfx_fillGradientRoundRect(pBuf, 
-                              btn->pos.x + offset, 
-                              btn->pos.y + offset, 
-                              btn->size.width, 
-                              btn->size.height, 
-                              btn->radius, topColor, bottomColor);
-
-    // 3. Dibujar la Etiqueta (Centro móvil)
-    gfx_DrawString(pBuf, btn->font, 
-                   btn->pos.x + offset + (btn->size.width / 2.0f),
-                   btn->pos.y + offset + (btn->size.height / 2.0f), 
-                   btn->label, activeTextColor, btn->fontScale, ALIGN_CENTER);
-}*/
-
-void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb)
-{
-  	gfx_DrawString(pBuf, lb->font, lb->pos.x, lb->pos.y, lb->text, lb->textColor, lb->scale, lb->alignment);
+    // 3. Render the string if the font was successfully loaded from the SD card
+    if (fontId >= 0) {
+        gfx_DrawString(pBuf, fontId, lb->pos.x, lb->pos.y, lb->text, activeColor, lb->alignment, 1);
+    }
 }
 
 void gfx_drawRectangle(pixel16_t *pBuf, gfx_Rectangle *rect)

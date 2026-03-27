@@ -5,48 +5,114 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "sdspi_hal.h"
 #include "helpers.h"
+#include "sdspi_hal.h"
 
 #include "FT8xx_params.h"
 
 #include "font_engine.h"
 
-
-//const char *FONT_BEBAS_PATH = "BEBAS32.BDF";
-// const char *FONT_BEBAS_PATH = "FONTS/INTER/INTREG32.bdf";
+// const char *FONT_BEBAS_PATH = "BEBAS32.BDF";
+//  const char *FONT_BEBAS_PATH = "FONTS/INTER/INTREG32.bdf";
 const char *FONT_BEBAS_PATH = "FONTS/INTER/INTBLD48.bdf";
 const char *FONT_ROBOTO_PATH = "ROBOTO.BDF";
 
 static const char TASK_NAME[] = "fontEngine";
 
-void gfx_GetStringDimensions(const char *str, uint8_t font, uint16_t *pWidth, uint16_t *pHeight, uint8_t scale) {
+gfx_FontSlot_t g_FontCache[MAX_LOADED_FONTS] = {0};
+
+void gfx_GetStringDimensions(const char *str, int8_t fontId, uint16_t *pWidth, uint16_t *pHeight, uint8_t scale) {
     uint16_t width = 0;
 
-    // Safety checks
-    if (!str || !pWidth || !pHeight || font >= FONT_NUMBER) return;
+    // Safety checks + Cache validation
+    if (!str || !pWidth || !pHeight || fontId < 0 || fontId >= MAX_LOADED_FONTS || !g_FontCache[fontId].isLoaded) {
+        if (pWidth) *pWidth = 0;
+        if (pHeight) *pHeight = 0;
+        return;
+    }
+
+    // Point directly to the loaded BDF data in the cache
+    BDF_Font_t *sFont = &g_FontCache[fontId].bdfData;
 
     // Calculate total advanceX for the single string
     while (*str) {
         char c = *str;
-        if (c >= g_SystemFont[font].firstChar && c <= g_SystemFont[font].lastChar) {
-            uint16_t charIndex = c - g_SystemFont[font].firstChar;
-            width += g_SystemFont[font].glyphs[charIndex].advanceX;
+        if (c >= sFont->firstChar && c <= sFont->lastChar) {
+            uint16_t charIndex = c - sFont->firstChar;
+            width += sFont->glyphs[charIndex].advanceX;
         }
         str++;
     }
 
+    // Protect against scale being 0
+    if (scale == 0) scale = 1;
+
     // Pass the scaled dimensions back
     *pWidth = width * scale;
-    *pHeight = g_SystemFont[font].yAdvance * scale;
+    *pHeight = sFont->yAdvance * scale;
 }
 
-void gfx_DrawChar(pixel16_t *pBuffer, uint8_t ui8Font, int16_t *cursorX, int16_t cursorY, char c, uint16_t color, uint16_t scale) {
-	
-	if(ui8Font >=  FONT_NUMBER)
-		return;
+void gfx_DrawChar(pixel16_t *pBuffer, int8_t fontId, int16_t *cursorX,
+                  int16_t cursorY, char c, uint16_t color) {
+  if (fontId < 0 || fontId >= MAX_LOADED_FONTS || !g_FontCache[fontId].isLoaded)
+    return;
 
-	BDF_Font_t sFont = g_SystemFont[ui8Font];
+  BDF_Font_t sFont = g_FontCache[fontId].bdfData;
+
+  if (c < sFont.firstChar || c > sFont.lastChar)
+    c = '?';
+
+  uint16_t charIndex = c - sFont.firstChar;
+  BDF_Glyph_t glyph = sFont.glyphs[charIndex];
+
+  int16_t drawX = *cursorX + glyph.xOffset;
+  int16_t drawY = cursorY + glyph.yOffset;
+
+  uint8_t *charPixels = &sFont.pixelPool[glyph.bitmapOffset];
+  uint16_t byteIndex = 0;
+
+  // HIGH-SPEED 1:1 RENDER LOOP
+  int row = 0;
+  for (; row < glyph.height; row++) {
+    int16_t screenY = drawY + row;
+
+    // Skip entirely if the row is off-screen
+    if (screenY < 0 || screenY >= LCD_HEIGHT) {
+      byteIndex += (glyph.width + 7) / 8;
+      continue;
+    }
+
+    uint32_t rowOffset = screenY * LCD_WIDTH;
+
+    int col = 0;
+    for (; col < glyph.width; col++) {
+      uint8_t bitMask = 0x80 >> (col % 8);
+      uint8_t currentByte = charPixels[byteIndex + (col / 8)];
+
+      // If the bit is set, draw exactly one pixel
+      if (currentByte & bitMask) {
+        int16_t screenX = drawX + col;
+
+        if (screenX >= 0 && screenX < LCD_WIDTH) {
+          pBuffer[rowOffset + screenX].u16 =
+              color; // Assign directly, no scaling math!
+        }
+      }
+    }
+    byteIndex += (glyph.width + 7) / 8;
+  }
+
+  *cursorX += glyph.advanceX;
+}
+
+void gfx_DrawCharScaled(pixel16_t *pBuffer, uint8_t fontId, int16_t *cursorX,
+                        int16_t cursorY, char c, uint16_t color,
+                        uint16_t scale) {
+
+  if (fontId >= MAX_LOADED_FONTS)
+    return;
+
+  BDF_Font_t sFont = g_FontCache[fontId].bdfData;
 
   // 1. Bounds check and default
   if (c < sFont.firstChar || c > sFont.lastChar)
@@ -110,16 +176,19 @@ void gfx_DrawChar(pixel16_t *pBuffer, uint8_t ui8Font, int16_t *cursorX, int16_t
   *cursorX += (glyph.advanceX * scale);
 }
 
-void gfx_DrawString(pixel16_t *pBuffer, uint8_t font, int16_t x, int16_t y, 
-                    const char *str, uint16_t color, uint8_t scale, uint8_t alignment) 
+void gfx_DrawString(pixel16_t *pBuffer, int8_t fontId, int16_t x, int16_t y, 
+                    const char *str, uint16_t color, uint8_t alignment, uint8_t scale) 
 {
-    if (!str || !pBuffer || font >= FONT_NUMBER) return;
+    // Safety checks + Cache validation
+    if (!str || !pBuffer || fontId < 0 || fontId >= MAX_LOADED_FONTS || !g_FontCache[fontId].isLoaded) return;
 
-    BDF_Font_t *sFont = &g_SystemFont[font];
+    if (scale == 0) scale = 1;
+
+    BDF_Font_t *sFont = &g_FontCache[fontId].bdfData;
 
     // 1. Calculate the scaled dimensions
     uint16_t totalWidth = 0, totalHeight = 0;
-    gfx_GetStringDimensions(str, font, &totalWidth, &totalHeight, scale);
+    gfx_GetStringDimensions(str, fontId, &totalWidth, &totalHeight, scale);
     
     // 2. Adjust starting X (Horizontal Alignment)
     int16_t cursorX = x;
@@ -133,7 +202,6 @@ void gfx_DrawString(pixel16_t *pBuffer, uint8_t font, int16_t x, int16_t y,
     int16_t cursorY = y;
     
     // Ascent is how far the text goes ABOVE the baseline. 
-    // Example: (31 + (-6)) * scale = 25 * scale.
     int16_t ascent = (sFont->yAdvance + sFont->globalYOffset) * scale;
     
     // Descent is how far the text goes BELOW the baseline (Usually negative).
@@ -154,36 +222,109 @@ void gfx_DrawString(pixel16_t *pBuffer, uint8_t font, int16_t x, int16_t y,
 
     // 4. Fast, single-pass render loop
     while (*str) {
-        gfx_DrawChar(pBuffer, font, &cursorX, cursorY, *str, color, scale);
+        if (scale > 1) {
+            // Use the fallback scaler if requested
+            gfx_DrawCharScaled(pBuffer, fontId, &cursorX, cursorY, *str, color, scale);
+        } else {
+            // HIGH-SPEED PATH: Use the 1:1 renderer
+            gfx_DrawChar(pBuffer, fontId, &cursorX, cursorY, *str, color);
+        }
         str++;
     }
 }
 
-bool gfx_fontLoad()
-{
-  // Load only Space (32) through Tilde (126)
-  if (SDSPI_FetchBDF(&g_SystemFont[FONT_ROBOTO], FONT_ROBOTO_PATH, 32, 126)) {
-    TIVA_LOGI(TASK_NAME, "Roboto Font parsed successfully! Pool size: %u bytes",
-              g_SystemFont[FONT_ROBOTO].poolSize);
-  } else {
-    TIVA_LOGE(TASK_NAME, "Failed to load or parse BDF font.");
-	return false;
-  }
-  if (SDSPI_FetchBDF(&g_SystemFont[FONT_BEBAS], FONT_BEBAS_PATH, 32, 126)) {
-    TIVA_LOGI(TASK_NAME, "Bebas Font parsed successfully! Pool size: %u bytes",
-              g_SystemFont[FONT_BEBAS].poolSize);
-  } else {
-    TIVA_LOGE(TASK_NAME, "Failed to load or parse BDF font.");
-	return false;
+int8_t gfx_fontLoadDynamic(gfx_FontFamily_e family, gfx_FontWeight_e weight,
+                           gfx_FontSize_e size) {
+  // 1. Check if this exact font is already loaded in cache
+	int i = 0;
+  for (; i < MAX_LOADED_FONTS; i++) {
+    if (g_FontCache[i].isLoaded && g_FontCache[i].family == family &&
+        g_FontCache[i].weight == weight && g_FontCache[i].size == size) {
+      return i; // Return the existing Font ID
+    }
   }
 
-  return true;
+  // 2. Find an empty slot
+  int8_t freeSlot = -1;
+  for (i = 0; i < MAX_LOADED_FONTS; i++) {
+    if (!g_FontCache[i].isLoaded) {
+      freeSlot = i;
+      break;
+    }
+  }
+
+  if (freeSlot == -1) {
+    TIVA_LOGE(TASK_NAME, "Font Cache is full! Cannot load new font.");
+    return -1;
+  }
+
+  // 3. Build the file path dynamically
+  // Example: "FONTS/INTER/BOLD_24.BDF"
+  char filePath[64];
+  const char *familyStr = "";
+  const char *weightStr = "";
+
+  switch (family) {
+  case FONT_FAM_INTER:
+    familyStr = "INTER";
+    break;
+  case FONT_FAM_ROBOTO:
+    familyStr = "ROBOTO";
+    break;
+  case FONT_FAM_BEBAS:
+    familyStr = "BEBAS";
+    break;
+  case FONT_FAM_MOMO:
+    familyStr = "MOMO";
+    break;
+  }
+
+  switch (weight) {
+  case FONT_WEIGHT_REGULAR:
+    weightStr = "REG";
+    break;
+  case FONT_WEIGHT_BOLD:
+    weightStr = "BOLD";
+    break;
+  case FONT_WEIGHT_ITALIC:
+    weightStr = "ITA";
+    break;
+  case FONT_WEIGHT_BLACK:
+    weightStr = "BLK";
+    break;
+  default:
+    weightStr = "REG";
+    break;
+  }
+  
+  uint8_t numSize = 0;
+  switch(size)
+  {
+	case FONT_SIZE_18: numSize = 18; break;
+	case FONT_SIZE_24: numSize = 24; break;
+	case FONT_SIZE_28: numSize = 28; break;
+	case FONT_SIZE_32: numSize = 32; break;
+	case FONT_SIZE_38: numSize = 38; break;
+	case FONT_SIZE_42: numSize = 42; break;
+	case FONT_SIZE_48: numSize = 48; break;
+	default: numSize = 18; break;
+	
+  }
+
+  snprintf(filePath, sizeof(filePath), "FONTS/%s/%s_%d.BDF", familyStr,
+           weightStr, numSize);
+
+  TIVA_LOGI(TASK_NAME, "Attempting to load: %s", filePath);
+
+  // 4. Load from SD SPI
+  if (SDSPI_FetchBDF(&g_FontCache[freeSlot].bdfData, filePath, 32, 126)) {
+    g_FontCache[freeSlot].family = family;
+    g_FontCache[freeSlot].weight = weight;
+    g_FontCache[freeSlot].size = size;
+    g_FontCache[freeSlot].isLoaded = true;
+    return freeSlot; // Return the new Font ID
+  }
+
+  TIVA_LOGE(TASK_NAME, "Failed to load font from SD.");
+  return -1;
 }
-
-
-
-
-
-
-
-

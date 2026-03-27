@@ -4,10 +4,10 @@
 typedef enum
 {
     GESTURE_EMPTY,
-    GESTURE_CLICK,
+	GESTURE_PRESSED,
+    GESTURE_RELEASE,
     GESTURE_DRAG,
     GESTURE_LOCK_OBJ,
-    GESTURE_RELEASE,
 } gesture_type_e;
 
 void gestureEngineInit(void);

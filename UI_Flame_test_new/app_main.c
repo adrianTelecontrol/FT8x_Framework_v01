@@ -47,6 +47,7 @@
 
 
 #include "draw_bitmap.h"
+#include "gfx_theme.h"
 
 // Define clock freq
 const uint32_t g_ui32SysClock = 120E6;
@@ -321,14 +322,12 @@ int main(void) {
 
   initializeSquaresPhysics(); // Initialize squares
 
-  while (!gfx_fontLoad()) {
-    SysCtlDelay(MS_2_CLK(100));
-  }
-
   gfx_calibrate();
 
   StartCycleCounter(); // The DWT will be our clock source
 
+  Theme_Init();
+  Theme_SetMode(true);
   initHomeForm();
 
   // Send initial full frame

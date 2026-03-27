@@ -7,11 +7,20 @@
 #include "FT8xx.h"
 #include "font_engine.h"
 #include "graphics_engine.h"
+#include "gfx_theme.h"
 
 #define MAX_CANVAS_WIDGETS 20
 
 // Darkens any RGB565 color by 50% safely and instantly
 #define DARKEN_COLOR(c) (((c) & 0xF7DE) >> 1)
+
+typedef enum {
+	STYLE_DEFAULT = 0,
+	STYLE_PRIMARY,
+	STYLE_SECONDARY,
+	STYLE_DANGER,
+	STYLE_SUCCESS
+} gfx_WidgetStyle_e;
 
 typedef enum {
   WD_TYPE_NULL = 0,
@@ -74,37 +83,37 @@ typedef enum {
 } ButtonState_e;
 
 typedef struct Button {
-  Size size;
-  Position pos;
-  Position oldPos;
-  RegionTouchObject regTouch;
-  uint16_t radius;
-  uint16_t textColor;
-  uint16_t backgroundColor;
-  uint16_t borderWidth;
-  uint16_t borderColor;
-  ButtonState_e state;
-  uint8_t font;
-  uint8_t fontScale;
-  uint8_t activate;
-  char *label;
-  char *name;
-  bool bIsDirty;
+    Size size;
+    Position pos;
+    Position oldPos;
+    RegionTouchObject regTouch;
+    
+    uint16_t radius;
+    uint8_t borderWidth;
+    
+    gfx_WidgetStyle_e style;  // Define el COLOR global
+    gfx_TypoStyle_e typo;     // Define la FUENTE global
+    ButtonState_e state;
+    
+    char *label;
+    char *name;
+    bool bIsDirty;
 
-  void (*onClicked)(struct Button *);
-  void (*onRelease)(struct Button *);
-  void (*onPosChanged)(struct Button *, Position newPos);
+    void (*onPressed)(struct Button *);
+    void (*onRelease)(struct Button *);
+    void (*onPosChanged)(struct Button *, Position newPos);
 } gfx_Button;
 
 typedef struct {
-  Position pos;
-  uint8_t scale;
-  uint16_t textColor;
-  char *text;
-  uint8_t font;
-  bool bIsDirty;
-
-  gfx_Align_e alignment;
+    Position pos;
+    char *text;
+    
+    // The Magic Hooks
+    gfx_WidgetStyle_e style;  // Resolves to g_pCurrentTheme->palette
+    gfx_TypoStyle_e typo;     // Resolves to g_pCurrentTheme->fonts
+    gfx_Align_e alignment;
+    
+    bool bIsDirty;
 } gfx_Label;
 
 typedef struct {
