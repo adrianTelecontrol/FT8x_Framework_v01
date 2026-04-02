@@ -103,6 +103,8 @@ static inline uint8_t BDF_HexToByte(const char *hex) {
 }
 
 
+void gfx_GetStringDimensions(const char *str, int8_t fontId, uint16_t *pWidth, uint16_t *pHeight, uint8_t scale);
+
 int8_t gfx_fontLoadDynamic(gfx_FontFamily_e family, gfx_FontWeight_e weight, uint8_t size);
 
 void gfx_DrawChar(pixel16_t *pBuffer, int8_t fontId, int16_t *cursorX, int16_t cursorY, char c, uint16_t color);

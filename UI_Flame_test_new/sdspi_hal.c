@@ -522,8 +522,15 @@ bool SDSPI_FetchBDF(BDF_Font_t *psFont, const char *pcFileName, uint16_t startCh
     uint32_t numChars = endChar - startChar + 1;
 
     // Allocate memory in external SDRAM (Assuming heap is mapped to 0x60000000)
-    psFont->glyphs = (BDF_Glyph_t *)malloc(numChars * sizeof(BDF_Glyph_t));
+	uint32_t len =  numChars * sizeof(BDF_Glyph_t);
+	TIVA_LOGI(TASK_NAME, "%u", len);
+    psFont->glyphs = (BDF_Glyph_t *)malloc(len);
+    // psFont->glyphs = (BDF_Glyph_t *)malloc(numChars * sizeof(BDF_Glyph_t));
     
+	while(psFont->glyphs == NULL)
+	{
+		SysCtlDelay(1000);
+	}
     // Allocate a large pool for the pixels (e.g., 64KB). 
     // You can adjust this based on the font size.
     psFont->pixelPool = (uint8_t *)malloc(65536); 

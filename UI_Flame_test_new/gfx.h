@@ -106,7 +106,10 @@ typedef struct Button {
 
 typedef struct {
     Position pos;
+	Position oldPos;
+	Size oldSize;
     char *text;
+	char *name;
     
     // The Magic Hooks
     gfx_WidgetStyle_e style;  // Resolves to g_pCurrentTheme->palette
@@ -159,6 +162,8 @@ void gfx_calibrate(void);
 //
 // ************ PrimitiveFuncitons ************************
 //
+void gfx_fillRect(pixel16_t *pBuf, int16_t x, int16_t y, int16_t w, int16_t h,
+                  uint16_t color);
 void gfx_drawCircle(pixel16_t *pBuf, int16_t x0, int16_t y0, int16_t r,
                     uint16_t color);
 

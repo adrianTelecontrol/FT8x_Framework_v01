@@ -1,6 +1,7 @@
 
 #include <stddef.h>
 
+#include "event_engine.h"
 #include "gfx_theme.h"
 #include "gfx_colors.h"
 
@@ -47,6 +48,21 @@ gfx_Theme_t g_ThemeSoftLight = {
     .palette.danger     = COLOR_SOFT_RED,      // Alertas
     .palette.success    = COLOR_SOFT_GREEN     // Estados OK
 };
+
+static void onChangeThemeEvent(uint32_t arg) {
+	gfx_FontFamily_e activeFamily = g_pCurrentTheme->fonts.currentFamily;
+
+	if(g_pCurrentTheme == &g_ThemeDark) {
+		g_pCurrentTheme = &g_ThemeLight;
+	} else {
+		g_pCurrentTheme = &g_ThemeDark;
+	}
+
+    Theme_SetFontFamily(activeFamily);
+
+	Event_Post(EVT_CMD_FULL_REPAINT, 0);
+}
+
 // ---------------------------------------------------------
 // INITIALIZATION
 // ---------------------------------------------------------
@@ -55,6 +71,8 @@ void Theme_Init(void) {
     
     // Cargar la familia de fuentes por defecto al arrancar
     Theme_SetFontFamily(FONT_FAM_INTER);
+
+	Event_Subscribe(EVT_CMD_CHANGE_THEME, onChangeThemeEvent);
 }
 
 void Theme_SetMode(bool isDark) {
@@ -85,3 +103,4 @@ void Theme_SetFontFamily(gfx_FontFamily_e newFamily) {
     // para asegurar que los números no salten.
     g_pCurrentTheme->fonts.mono    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, FONT_SIZE_24); 
 }
+

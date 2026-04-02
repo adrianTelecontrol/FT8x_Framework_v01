@@ -138,9 +138,11 @@ bool gfx_compositeFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer) {
   uint32_t i = 0;
   for(; i < LCD_WIDTH * LCD_HEIGHT; i++)
   {
-	psPixelBuffer[i].u16 = srf->ui16BackgroundColor;	
+	psPixelBuffer[i].u16 = g_pCurrentTheme->palette.background;	
   }
-
+  
+  uint32_t j = i;
+  j++;
   gfx_GenericWidgetNode *iter = srf->psWidgets;
   
   while (iter != NULL) {

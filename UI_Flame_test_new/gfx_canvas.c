@@ -6,40 +6,19 @@
 
 gfx_GenericWidgetNode* canvasCreateNode(gfx_GenericWidget *wd)
 {
-
-    gfx_GenericWidgetNode* node = (gfx_GenericWidgetNode *)malloc((sizeof(gfx_GenericWidgetNode)));
+    gfx_GenericWidgetNode* node = (gfx_GenericWidgetNode *)malloc(sizeof(gfx_GenericWidgetNode));
     if(node == NULL)
         return NULL;
 
     node->psNext = NULL;
     node->psPrev = NULL;
-    node->sWidget.pvWidget = NULL;
-    switch (wd->eWidgetType) 
-    {
-        case WD_TYPE_BUTTON:
-            node->sWidget.pvWidget = (gfx_Button *)malloc(sizeof(gfx_Button));
-            memcpy(node->sWidget.pvWidget, wd->pvWidget, sizeof(gfx_Button));
-        break;
 
-        case WD_TYPE_RECT:
-            node->sWidget.pvWidget = (gfx_Rectangle *)malloc(sizeof(gfx_Rectangle));
-            memcpy(node->sWidget.pvWidget, wd->pvWidget, sizeof(gfx_Rectangle));
-        break;
-        case WD_TYPE_LABEL:
-            node->sWidget.pvWidget = (gfx_Label *)malloc(sizeof(gfx_Label));
-            memcpy(node->sWidget.pvWidget, wd->pvWidget, sizeof(gfx_Label));
-        break;
+    // Store the pointer directly — do NOT copy the widget data.
+    // The canvas is a view over the widgets, not an owner of them.
+    node->sWidget.eWidgetType = wd->eWidgetType;
+    node->sWidget.pvWidget    = wd->pvWidget;
 
-        default:
-        break;
-    }
-
-    if(node->sWidget.pvWidget != NULL)
-    {
-        node->sWidget.eWidgetType = wd->eWidgetType;
-    }
-
-    return node; 
+    return node;
 }
 
 bool canvasInsertAtBottom(gfx_GenericWidgetNode** head, gfx_GenericWidget *wd)

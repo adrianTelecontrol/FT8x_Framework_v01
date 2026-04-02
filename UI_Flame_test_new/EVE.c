@@ -381,6 +381,7 @@ void EVE_Init(void) {
   while (EVE_MemRead8(REG_CPURESET) != 0x00) {
   }
 
+  
   // ------------------------- Display settings ------------------------------
   EVE_MemWrite16(REG_HSIZE, LCD_WIDTH);
   EVE_MemWrite16(REG_HCYCLE, LCD_H_CYCLE);
@@ -456,6 +457,7 @@ void EVE_Init(void) {
   TIVA_LOGI(TASK_NAME,
             "FT81x init finished! Changing SPI3 to high bitrate < 30MHz");
   SysCtlDelay(MS_2_CLK(100));
+  
   HAL_SPI_SetHighSpeed();
 }
 

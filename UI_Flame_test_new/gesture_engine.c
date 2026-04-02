@@ -25,7 +25,7 @@ void gestureEngineInit(void) {
   ui32LastPollTicks = DWTGetCycleCounter();
 }
 
-/*
+
 void gestureEngineTask(void) {
     uint32_t ui32CurrentTicks = DWTGetCycleCounter();
 
@@ -41,12 +41,17 @@ void gestureEngineTask(void) {
     // 2. Read hardware
     g_sCurTouchStatus = gfx_touchReadRegion();
 
+	if(g_sCurTouchStatus.x == 0 && g_sCurTouchStatus.y == 0)
+		g_sCurTouchStatus.state = 0;
+
     // 3. Simple Gesture State Machine (Click Only)
     if (g_sCurTouchStatus.state == true) {
 
         if (g_sPastTouchStatus.state == false) {
             // RISING EDGE: Finger just touched the screen
             // (We do nothing here for a basic click, just wait for release)
+            g_eGestureType = GESTURE_PRESSED;
+            formManagerHandleGesture(g_sCurTouchStatus, g_eGestureType);
         } else {
             // HOLDING: Finger is down.
             // (Drag and duration logic removed for now)
@@ -57,7 +62,7 @@ void gestureEngineTask(void) {
         // FALLING EDGE: Finger just left the screen
         if (g_sPastTouchStatus.state == true) {
 
-            g_eGestureType = GESTURE_CLICK;
+            g_eGestureType = GESTURE_RELEASE;
 
             // CRITICAL: Pass the PAST status so the Form Manager knows
             // the last valid X/Y coordinates of the finger!
@@ -68,8 +73,9 @@ void gestureEngineTask(void) {
     }
 
     g_sPastTouchStatus = g_sCurTouchStatus;
-}*/
+}
 
+/*
 void gestureEngineTask(void) {
     uint32_t ui32CurrentTicks = DWTGetCycleCounter();
 
@@ -124,7 +130,7 @@ void gestureEngineTask(void) {
     }
 
     g_sPastTouchStatus = g_sCurTouchStatus;
-}
+}*/
 
 gesture_type_e gestureEngineGetGesture(void) { return g_eGestureType; }
 

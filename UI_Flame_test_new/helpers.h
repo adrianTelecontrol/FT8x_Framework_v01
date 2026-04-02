@@ -5,6 +5,7 @@
  * Helper functions
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "tiva_log.h"
@@ -47,6 +48,21 @@ extern const uint32_t g_ui32SysClock;
 /*!< Read cycle counter register */
 
 
+void Helper_FloatToString(char *buffer, uint32_t whole, uint32_t frac,
+                          bool bAddEnd);
+
+inline uint32_t GetExecTimeMs(void)
+{
+    const uint32_t CLOCK_PERIOD = g_ui32SysClock / 1E6;                        
+    /* 5. Calculate Microseconds (Integer Math for UARTprintf) */              
+    /* Assuming 120 MHz Clock: 120 cycles = 1 us */                            
+    return ( DWTGetCycleCounter() / CLOCK_PERIOD ) / 1000;                               
+    // uint32_t us_frac =                                                         
+    //     (duration % CLOCK_PERIOD) * 100 / CLOCK_PERIOD; /* 2 decimal places */ 
+    // g_ui32ExecMs = us_whole / 1000;                                       
+	
+}
+
 inline void StartCycleCounter(void) {
     DWTInitCycleCounter();
     DWTResetCycleCounter();
@@ -57,22 +73,22 @@ inline void StartCycleCounter(void) {
 uint32_t g_ui32ExecMs;
 #define MEASURE_EXECUTION(code_to_measure)                                     \
   do {                                                                         \
-    DWTInitCycleCounter();                                                   \
-    DWTResetCycleCounter();                                                  \
-    DWTEnableCycleCounter();                                                 \
+    DWTInitCycleCounter();                                                     \
+    DWTResetCycleCounter();                                                    \
+    DWTEnableCycleCounter();                                                   \
     /* 2. Execute Code */                                                      \
     code_to_measure;                                                           \
                                                                                \
     /* 4. Calculate Duration */                                                \
-    uint32_t duration = DWTGetCycleCounter();                                \
+    uint32_t duration = DWTGetCycleCounter();                                  \
     DWTDisableCycleCounter();                                                  \
+    const uint32_t CLOCK_PERIOD = g_ui32SysClock / 1E6;                        \
     /* 5. Calculate Microseconds (Integer Math for UARTprintf) */              \
     /* Assuming 120 MHz Clock: 120 cycles = 1 us */                            \
-    const uint32_t CLOCK_PERIOD = g_ui32SysClock / 1E6;                        \
     uint32_t us_whole = duration / CLOCK_PERIOD;                               \
     uint32_t us_frac =                                                         \
         (duration % CLOCK_PERIOD) * 100 / CLOCK_PERIOD; /* 2 decimal places */ \
-    g_ui32ExecMs = us_whole / 1000;                                       \
+    g_ui32ExecMs = us_whole / 1000;                                       	   \
     /* 6. Log result using Integer formatting (%d.%02d) */                     \
     UARTprintf("I [PERF] '%s' took: %u cycles (%u.%02u us), (%u ms)\n",        \
                #code_to_measure, duration, us_whole, us_frac, g_ui32ExecDurMs);       \

@@ -27,6 +27,7 @@ void formManagerLoadForm(gfx_Canvas *form)
 	}
 }
 
+/*
 bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture)
 {
     static Position newPos;
@@ -67,6 +68,27 @@ bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture)
             }
             break;
         case GESTURE_RELEASE:
+			// Only clicking
+			temp = g_psCurrentForm->psWidgets;
+            while (temp != NULL) 
+            {
+                if(gfx_isWidgetTouched(&temp->sWidget, touchStatus))
+                {
+                    g_pLockedWidget = temp->sWidget.pvWidget;
+                    g_eLockedWidgetType = WD_TYPE_BUTTON;
+
+                    break;
+                }
+
+                temp = temp->psNext;
+            }
+
+            // btn = (gfx_Button *)g_pLockedWidget;
+            // if(btn->onRelease != NULL)
+            // {
+            //     btn->onRelease(btn);
+            // }
+			
             // Call release callback if locked widget has one
             if(g_pLockedWidget != NULL && g_eLockedWidgetType == WD_TYPE_BUTTON)
             {
@@ -98,6 +120,63 @@ bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture)
             }
             break;
         default:
+            break;
+    }
+
+    return true;
+} */
+
+bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture)
+{
+    gfx_GenericWidgetNode *temp = NULL;
+
+    switch (gesture) 
+    {
+        case GESTURE_PRESSED:
+            // 1. Search for the touched widget
+            temp = g_psCurrentForm->psWidgets;
+            while (temp != NULL) 
+            {
+                if (gfx_isWidgetTouched(&temp->sWidget, touchStatus))
+                {
+                    // 2. Lock the widget so we remember it for the Release phase
+                    g_pLockedWidget = temp->sWidget.pvWidget;
+                    g_eLockedWidgetType = temp->sWidget.eWidgetType;
+
+                    // 3. Fire the Pressed callback
+                    if (g_eLockedWidgetType == WD_TYPE_BUTTON) 
+                    {
+                        gfx_Button *btn = (gfx_Button *)g_pLockedWidget;
+                        if (btn->onPressed != NULL) {
+                            btn->onPressed(btn);
+                        }
+                    }
+                    
+                    // Stop searching once we find a hit (respects Z-order)
+                    break;
+                }
+                temp = temp->psNext;
+            }
+            break;
+
+        case GESTURE_RELEASE:
+            // 1. Fire the Release callback on whatever we locked during PRESSED
+            if (g_pLockedWidget != NULL && g_eLockedWidgetType == WD_TYPE_BUTTON)
+            {
+                gfx_Button *btn = (gfx_Button *)g_pLockedWidget;
+                if (btn->onRelease != NULL)
+                {
+                    btn->onRelease(btn);
+                }
+            }
+            
+            // 2. Clear the lock completely
+            g_pLockedWidget = NULL;
+            g_eLockedWidgetType = WD_TYPE_NULL;
+            break;
+
+        default:
+            // Ignore GESTURE_DRAG and GESTURE_LOCK_OBJ for now
             break;
     }
 

@@ -29,7 +29,6 @@
 #include "EVE_colors.h"
 #include "FT8xx_params.h"
 #include "bitmap_parser.h"
-#include "bmp_wrapper.h"
 #include "ft81x_spi_test.h"
 #include "gfx.h"
 #include "helpers.h"
@@ -44,6 +43,7 @@
 #include "sdram_hal.h"
 #include "sdspi_hal.h"
 #include "tiva_log.h"
+#include "test/control_sim.h"
 
 
 #include "draw_bitmap.h"
@@ -69,6 +69,7 @@ const uint32_t g_ui32SysClock = 120E6;
 //*****************************************************************************
 #define FT81x_SPI_QUICK_TEST
 // #define FT81x_SPI_FULL_TEST
+// #define ENABLE_SDRAM_TEST
 
 //*****************************************************************************
 //
@@ -293,13 +294,35 @@ int main(void) {
   // Configure the UART for system output
   ConfigureUART();
 
-  MAP_IntMasterEnable();
+  //MAP_IntMasterEnable();
   TIVA_LOGI(TASK_NAME, "Starting application...");
 
   Gfx_initEngine(LCD_WIDTH, LCD_HEIGHT);
 
-  bool ret = SDSPI_MountFilesystem();
+#ifdef ENABLE_SDRAM_TEST
+  TIVA_LOGI(TASK_NAME, "Starting EPI SDRAM Verification");
+  uint32_t *pCheck = (uint32_t *)0x60000000;
+  *pCheck = 0xDEADBEEF;
+  if (*pCheck == 0xDEADBEEF) {
+    // Safe to use malloc now
+    TIVA_LOGI(TASK_NAME, "SDRAM verification correct!");
+  } else {
+    TIVA_LOGE(TASK_NAME,
+              "Failed initial SDRAM verification! Going into halt state.");
+    while (1) {
+    }
+  }
+  bool ret =
+      SDRAM_Test((uint32_t)SDRAM_APP_START_ADDRESS, (uint32_t)0x100, 0.2);
   if (!ret) {
+    TIVA_LOGE(TASK_NAME,
+              "Failed extensive SDRAM verification! Going into halt state.");
+    while (1) {
+    }
+  }
+#endif // ENABLE_SDRAM_TEST
+
+  if (!SDSPI_MountFilesystem()) {
     SysCtlDelay(MS_2_CLK(100));
   }
   TIVA_LOGI(TASK_NAME, "Setting up Screen SPI...");
@@ -312,7 +335,7 @@ int main(void) {
   TIVA_LOGI(TASK_NAME, "Screen is awake!");
   SysCtlDelay(MS_2_CLK(1000));
   TIVA_LOGI(TASK_NAME, "Running Quick FT81x SPI verification... ");
-  QuickSanityCheck();
+  //QuickSanityCheck();
 
   TIVA_LOGI(TASK_NAME, "Clearing the screen to 0x%x color", EVE_PINK);
   EVE_MemWrite8(REG_PWM_DUTY, 128);
@@ -320,15 +343,18 @@ int main(void) {
   gfx_start(EVE_PINK);
   gfx_end();
 
-  initializeSquaresPhysics(); // Initialize squares
+  //initializeSquaresPhysics(); // Initialize squares
 
   gfx_calibrate();
 
   StartCycleCounter(); // The DWT will be our clock source
 
   Theme_Init();
-  Theme_SetMode(true);
+  Theme_SetMode(false);
   initHomeForm();
+
+  // Test Unit
+  controlSimulatorInit();
 
   // Send initial full frame
   formManagerComposite(g_pDrawingBuffer);
@@ -342,6 +368,9 @@ int main(void) {
 
     gestureEngineTask();
 
+	controlSimulatiorTask();
+
+	Event_Dispatch();
   } 
 
 }

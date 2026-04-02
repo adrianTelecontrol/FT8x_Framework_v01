@@ -8,8 +8,10 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 
 #include <driverlib/interrupt.h>
 #include <driverlib/rom_map.h>
@@ -22,11 +24,14 @@
 
 #include "EVE.h"
 #include "FT8xx_params.h"
+#include "event_engine.h"
+#include "font_engine.h"
 #include "forms_manager.h"
 #include "gfx.h"
 #include "graphics_engine.h"
 #include "hal_spi.h"
 #include "helpers.h"
+
 
 // --- CONFIGURATION ---
 #define GFX_WIDTH 800
@@ -82,34 +87,15 @@ static uint32_t g_ulDummyRx;
 uint32_t g_ui32StartTxCycles;
 uint32_t g_ui32EndTxCycles;
 
+static bool g_bRequestFullRepaint = false;
+
 volatile DMAJobQueue_t g_DMAQueue = {0};
 
 volatile RenderEngine_t g_RenderEngine = {RENDER_IDLE};
 
-// --- HELPER FUNCTIONS ---
-void Helper_FloatToString(char *buffer, uint32_t whole, uint32_t frac,
-                          bool bAddEnd) {
-  char *ptr = buffer;
-  uint32_t temp = whole;
+static const char *TASK_NAME = "gfx";
 
-  if (temp == 0) {
-    *ptr++ = '0';
-  } else {
-    char *start = ptr;
-    while (temp > 0) {
-      *ptr++ = (temp % 10) + '0';
-      temp /= 10;
-    }
-    char *end = ptr - 1;
-    while (start < end) {
-      char t = *start;
-      *start++ = *end;
-      *end-- = t;
-    }
-  }
-  if (bAddEnd)
-    *ptr++ = '\0';
-}
+// --- HELPER FUNCTIONS ---
 
 void Helper_IntToFPSString(char *buffer, uint32_t whole, uint32_t frac) {
   char *ptr = buffer;
@@ -597,6 +583,8 @@ void Gfx_Start_SG_Transfer(void) {
 #endif
 }
 
+static void onFullRepaintEvent(uint32_t args) { g_bRequestFullRepaint = true; }
+
 // --- INITIALIZATION ---
 bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight) {
   g_pBufferA = (pixel16_t *)malloc(GFX_BUFFER_SIZE_BYTES);
@@ -610,6 +598,8 @@ bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight) {
 
   g_pDrawingBuffer = g_pBufferA;
   g_pSendingBuffer = g_pBufferB;
+
+  Event_Subscribe(EVT_CMD_FULL_REPAINT, onFullRepaintEvent);
 
   return true;
 }
@@ -630,7 +620,7 @@ void Gfx_render(void) {
   EVE_AddrForWr(RAM_G);
 
   Gfx_Start_SG_Transfer();
-  g_ui32StartTxCycles = DWTGetCycleCounter();
+  // g_ui32StartTxCycles = DWTGetCycleCounter();
 
 #ifndef GFX_ENABLE_INT
   HAL_SPI_CS_Disable();
@@ -759,8 +749,6 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
   // snippets) Gfx_RestoreBackground_Fast((pixel16_t *)sBitmapHandler.ui8Pixels,
   //                            psPixelBuffer, dirtyX, dirtyY, dirtyW, dirtyH);
   int16_t y = dirtyY;
-  pixel16_t pxBlack;
-  pxBlack.u16 = 0x0000; 
   for (; y < dirtyY + dirtyH; y++) {
     int16_t x = dirtyX;
     for (; x < dirtyX + dirtyW; x++) {
@@ -769,8 +757,9 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
       if (x >= 0 && x < LCD_WIDTH && y >= 0 && y < LCD_HEIGHT) {
         // Calculate the 1D linear index for the 2D coordinate
         uint32_t linearIndex = (y * LCD_WIDTH) + x;
-        psPixelBuffer[linearIndex] = (pixel16_t)srf->ui16BackgroundColor;
-        //psPixelBuffer[linearIndex] = pxBlack;
+        psPixelBuffer[linearIndex] =
+            (pixel16_t)g_pCurrentTheme->palette.background;
+        //psPixelBuffer[linearIndex] = (pixel16_t)(uint16_t)0xFF70;
       }
     }
   }
@@ -814,7 +803,11 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
   return true;
 }
 
+
 void Gfx_RenderTask(void) {
+  // Bandera estática para recordar si nos falta enviar la mitad inferior
+  static bool g_bPendingBottomHalf = false;
+
   switch (g_RenderEngine.state) {
 
   case RENDER_IDLE:
@@ -825,7 +818,39 @@ void Gfx_RenderTask(void) {
       break;
     }
 
-    // 2. If the queue is empty, the SPI is totally free.
+    // 2. ¿Nos quedó pendiente la mitad inferior del repintado masivo?
+    // Entramos aquí solo porque sabemos que la cola (g_DMAQueue) ya está en 0.
+    if (g_bPendingBottomHalf) {
+      g_bPendingBottomHalf = false;
+
+      // Enviar la MITAD INFERIOR (Desde Y = LCD_HEIGHT / 2, Altura = LCD_HEIGHT
+      // / 2)
+      Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, LCD_HEIGHT / 2, LCD_WIDTH,
+                               LCD_HEIGHT / 2);
+
+      break;
+    }
+
+    // 3. ¿Hay una nueva solicitud de repintado masivo?
+    if (g_bRequestFullRepaint) {
+      g_bRequestFullRepaint = false;
+
+      // A. Componer TODA la pantalla en la memoria RAM del TM4C
+      formManagerComposite(g_pDrawingBuffer);
+
+      // B. Enviar solo la MITAD SUPERIOR a la cola DMA
+      // (Desde Y = 0, Altura = LCD_HEIGHT / 2)
+      Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, LCD_WIDTH,
+                               LCD_HEIGHT / 2);
+
+      // C. Levantar la bandera para enviar la parte inferior en la siguiente
+      // vuelta
+      g_bPendingBottomHalf = true;
+
+      break;
+    }
+
+    // 4. If the queue is empty, the SPI is totally free.
     // Let's sweep the Form Manager for dirty widgets!
     if (g_psCurrentForm != NULL) {
       gfx_GenericWidgetNode *iter = g_psCurrentForm->psWidgets;
@@ -840,7 +865,8 @@ void Gfx_RenderTask(void) {
           if (btn->bIsDirty) {
             btn->bIsDirty = false;
 
-            // 1. Calculate text overflow (matching the bounds function)
+            // Always include the pressed offset in the bbox so the
+            // cinematic shift is covered whether pressing or releasing.
             int16_t textWidth =
                 (btn->label != NULL) ? strlen(btn->label) * 10 : 0;
             int16_t overflowX = 0;
@@ -848,34 +874,111 @@ void Gfx_RenderTask(void) {
               overflowX = ((textWidth - btn->size.width) / 2) + 4;
             }
 
-            // 2. Calculate TRUE width and height (INCLUDING the +2 cinematic
-            // offset!)
+            // +2 on every side to absorb the cinematic press offset
+            // so the bbox is always large enough regardless of state.
             int16_t w =
-                btn->size.width + (overflowX * 2) + (btn->borderWidth * 2) + 2;
-            int16_t h = btn->size.height + (btn->borderWidth * 2) + 2;
+                btn->size.width + (overflowX * 2) + (btn->borderWidth * 2) + 4;
+            int16_t h = btn->size.height + (btn->borderWidth * 2) + 4;
 
-            // 3. Define the OLD bounds (using overflow)
-            int16_t oldX = btn->oldPos.x - overflowX - btn->borderWidth;
-            int16_t oldY = btn->oldPos.y - btn->borderWidth;
+            int16_t oldX = btn->oldPos.x - overflowX - btn->borderWidth - 2;
+            int16_t oldY = btn->oldPos.y - btn->borderWidth - 2;
+            int16_t newX = btn->pos.x - overflowX - btn->borderWidth - 2;
+            int16_t newY = btn->pos.y - btn->borderWidth - 2;
 
-            // 4. Define the NEW bounds (using overflow)
-            int16_t newX = btn->pos.x - overflowX - btn->borderWidth;
-            int16_t newY = btn->pos.y - btn->borderWidth;
-
-            // 5. Calculate the Union
             bboxX = (oldX < newX) ? oldX : newX;
             bboxY = (oldY < newY) ? oldY : newY;
-
             int16_t rightEdge =
                 ((oldX + w) > (newX + w)) ? (oldX + w) : (newX + w);
             int16_t bottomEdge =
                 ((oldY + h) > (newY + h)) ? (oldY + h) : (newY + h);
-
             bboxW = rightEdge - bboxX;
             bboxH = bottomEdge - bboxY;
 
             btn->oldPos = btn->pos;
             isDirty = true;
+          }
+        } else if (iter->sWidget.eWidgetType == WD_TYPE_LABEL) {
+          gfx_Label *lb = (gfx_Label *)iter->sWidget.pvWidget;
+
+          if (lb->bIsDirty && lb->text != NULL) {
+
+            int8_t fontId = -1;
+            switch (lb->typo) {
+            case TYPO_H1:
+              fontId = g_pCurrentTheme->fonts.h1;
+              break;
+            case TYPO_H2:
+              fontId = g_pCurrentTheme->fonts.h2;
+              break;
+            case TYPO_BODY:
+              fontId = g_pCurrentTheme->fonts.body;
+              break;
+            case TYPO_CAPTION:
+              fontId = g_pCurrentTheme->fonts.caption;
+              break;
+            case TYPO_MONO:
+              fontId = g_pCurrentTheme->fonts.mono;
+              break;
+            }
+
+            uint16_t textW = 0, textH = 0;
+            if (fontId >= 0) {
+              gfx_GetStringDimensions(lb->text, fontId, &textW, &textH, 1);
+            }
+
+            int16_t wipeX = lb->pos.x;
+            int16_t wipeY = lb->pos.y;
+
+            if (lb->alignment & ALIGN_HCENTER) {
+              wipeX = lb->pos.x - (textW / 2);
+            } else if (lb->alignment & ALIGN_RIGHT) {
+              wipeX = lb->pos.x - textW;
+            }
+
+            if (lb->alignment & ALIGN_VCENTER) {
+              wipeY = lb->pos.y - (textH / 2);
+            } else if (lb->alignment & ALIGN_BOTTOM) {
+              wipeY = lb->pos.y - textH;
+            }
+
+            // Margin of safety — absorbs font bearing overhang
+			wipeX -= 4;
+			wipeY -= 2;
+			textW += 8;
+			textH += 4;
+			
+			// Union bounding box (shrinking ghost fix)
+			if (lb->oldSize.width > 0) {
+			    bboxX = (wipeX < lb->oldPos.x) ? wipeX : lb->oldPos.x;
+			    bboxY = (wipeY < lb->oldPos.y) ? wipeY : lb->oldPos.y;
+			    int16_t rightEdge  = ((wipeX + textW) > (lb->oldPos.x + lb->oldSize.width))
+			                          ? (wipeX + textW) : (lb->oldPos.x + lb->oldSize.width);
+			    int16_t bottomEdge = ((wipeY + textH) > (lb->oldPos.y + lb->oldSize.height))
+			                          ? (wipeY + textH) : (lb->oldPos.y + lb->oldSize.height);
+			    bboxW = rightEdge  - bboxX;
+			    bboxH = bottomEdge - bboxY;
+			} else {
+			    bboxX = wipeX;
+			    bboxY = wipeY;
+			    bboxW = textW;
+			    bboxH = textH;
+			}
+			
+			// Save expanded footprint for next frame
+			lb->oldPos.x     = wipeX;
+			lb->oldPos.y     = wipeY;
+			lb->oldSize.width  = textW;
+			lb->oldSize.height = textH;
+			
+			// No more bboxW += 50
+
+            // bboxW += 4;
+
+            // WARNING: "Shrinking Ghost" logic goes here (see note below)
+
+            isDirty = true; // Trigger the DMA composite pipeline!
+            lb->bIsDirty =
+                false; // Clear the widget's flag so we don't loop forever
           }
         }
         // Add other cases (WD_TYPE_RECT, WD_TYPE_LABEL) here...
@@ -883,9 +986,18 @@ void Gfx_RenderTask(void) {
         // If we found a dirty widget, process it!
         if (isDirty) {
 
+          if (bboxX % 2 != 0) {
+            bboxX -= 1;
+            bboxW += 1;
+          }
+
+          // If Width is still odd, grow it 1 pixel right
+          if (bboxW % 2 != 0) {
+            bboxW += 1;
+          }
           // if (bboxW % 2 != 0) {
-          //          			bboxW += 1;
-          //      			}
+          //                    bboxW += 1;
+          //                }
           // A. Composite exactly this rectangle in the TM4C SDRAM
           gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bboxX,
                                     bboxY, bboxW, bboxH);
@@ -928,12 +1040,21 @@ void Gfx_RenderTask(void) {
   }
 
   case RENDER_WAIT_DMA:
-    // Poll the uDMA to see if it is still transferring
+    // 1. Poll the uDMA to see if it is still feeding the SPI
     if (g_bSPI_TransferActive) {
       return; // DMA active. Go do physics/comms.
     }
 
+    // 2. THE FIX: Wait for the SPI hardware to physically empty its FIFO!
+    // Replace 'SSI3_BASE' with whatever SPI module you are actually using
+    // (e.g., SSI0_BASE, SSI2_BASE) or use your HAL equivalent.
+    while (SSIBusy(SSI3_BASE)) {
+      // Spin here for a fraction of a microsecond until the wire is 100% idle
+    }
+
+    // 3. Now it is completely safe to terminate the transfer
     HAL_SPI_CS_Disable();
+
     if (g_DMAQueue.count > 0) {
       g_RenderEngine.state = RENDER_SEND_ROW;
     } else {
@@ -944,6 +1065,10 @@ void Gfx_RenderTask(void) {
   case RENDER_WAIT_SG_ISR:
     // (Keep this if you still use it for full-screen blasts)
     if (!g_bSPI_TransferActive) {
+
+#ifndef GFX_ENABLE_INT
+      HAL_SPI_CS_Disable();
+#endif
       g_RenderEngine.state = RENDER_IDLE;
     } else {
       return;

@@ -27,8 +27,11 @@ bool SDRAM_Test(const uint32_t SDRAM_APP_START_ADDRESS, const uint32_t SDRAM_ADD
     // Malloc test
     uint32_t *ptr;
     uint32_t n = 1000;
-    ptr = (uint32_t*) malloc(sizeof(uint32_t) * n);
-
+	ptr = (uint32_t*) malloc(sizeof(uint32_t) * n);
+	if (ptr == NULL) {
+	    TIVA_LOGE(TASK_NAME, "Malloc failed! Heap is too small.");
+	    return false;
+	}
     uint32_t j = 0;
     for (j = 0; j < n; j++)
     {
@@ -40,13 +43,13 @@ bool SDRAM_Test(const uint32_t SDRAM_APP_START_ADDRESS, const uint32_t SDRAM_ADD
     {
         if (ptr[i] != i)
         {
-            //TIVA_LOGI(TASK_NAME, "Correct! Malloc verification in address:\n");
+            TIVA_LOGI(TASK_NAME, "Correct! Malloc verification in address");
             break;
         }
-        // else
-        // {
-        //     TIVA_LOGI(TASK_NAME, "Error! Data corrupted in malloc:\n");
-        // }
+        else
+        {
+            TIVA_LOGI(TASK_NAME, "Error! Data corrupted in malloc");
+        }
     }
     if(i != j)
         TIVA_LOGE(TASK_NAME, "Corrupted data in malloc verification!");

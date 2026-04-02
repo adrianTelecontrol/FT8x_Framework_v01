@@ -21,16 +21,21 @@
 #define HAL_SPI_SDO 	GPIO_PIN_2
 #define HAL_SPI_SDI 	GPIO_PIN_3
 
+
+
 #define HAL_SPI_LOW_BITRATE		9E6		// 9Mhz
-#define HAL_SPI_HIGH_BITRATE	15E6	// 15Mhz
+#define HAL_SPI_HIGH_BITRATE	20E6	// 15Mhz
 
 #define HAL_GPIO_HIGH 	0XFF // Estado alto para los pines
 #define HAL_GPIO_LOW 	0X00  // Estado bajo para los pines
 
 #define HAL_SPI_CS 		GPIO_PIN_1 // PQ1   Chip selector de la pantalla
 #define HAL_SPI_PD 		GPIO_PIN_6 // PM6   pin para despertar a la pantalla
-#define HAL_SPI_POWD 	GPIO_PIN_7
 #define HAL_SPI_LED 	GPIO_PIN_0
+
+#define HAL_QSPI_PORT	GPIO_PORTK_BASE
+#define HAL_SPI_DIR1 	GPIO_PIN_6
+#define HAL_SPI_DIR2 	GPIO_PIN_7
 
 extern uint8_t g_HAL_uDMA_ControlTable[1024];
 extern volatile bool g_bSPI_TransferActive;
@@ -40,12 +45,6 @@ inline void HAL_SPI_CS_Enable() { GPIOPinWrite(GPIO_PORTQ_BASE, HAL_SPI_CS, HAL_
 inline void HAL_SPI_CS_Disable() { GPIOPinWrite(GPIO_PORTQ_BASE, HAL_SPI_CS, HAL_GPIO_HIGH); }
 inline void HAL_SPI_PD_Low() { GPIOPinWrite(GPIO_PORTM_BASE, HAL_SPI_PD, HAL_GPIO_LOW); }
 inline void HAL_SPI_PD_High() { GPIOPinWrite(GPIO_PORTM_BASE, HAL_SPI_PD, HAL_GPIO_HIGH); }
-inline void HAL_SPI_Turn_On() {
-  GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_POWD, HAL_GPIO_HIGH);
-}
-inline void HAL_SPI_Turn_Down() {
-  GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_POWD, HAL_GPIO_LOW);
-}
 inline void HAL_SPI_LED_On() {
   GPIOPinWrite(GPIO_PORTN_BASE, HAL_SPI_LED, HAL_GPIO_HIGH);
 }

@@ -10,6 +10,7 @@
 
 #include "graphics_engine.h"
 #include "helpers.h"
+#include "EVE_colors.h"
 // #include "image_loader.h"
 //  #include "FT8xx_params.h"
 
@@ -59,8 +60,7 @@ typedef struct {
 static SquareObject squares[10];
 const u16 SQUARE_OBJ_LEN = sizeof(squares) / sizeof(SquareObject);
 
-const u16 COLORS[] = {C_PURPLE, C_RED,    C_GREEN, C_BLUE, C_YELLOW,
-                      C_CYAN,   C_ORANGE, C_PINK,  C_LIME, C_SKY_BLUE};
+const u16 COLORS[] = {EVE_GRAPE, EVE_DARK_BLUE, EVE_DARK_RED};
 const u16 COLORS_LEN = sizeof(COLORS) / sizeof(u16);
 
 static Scene_t scene;
