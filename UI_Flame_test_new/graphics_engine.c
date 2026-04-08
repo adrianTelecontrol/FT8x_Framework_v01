@@ -41,7 +41,7 @@
 
 #define TRANSFER_SIZE 1024
 
-#define GFX_ENABLE_INT
+// #define GFX_ENABLE_INT
 // #define MEASURE_PERF_ENABLE
 //  #define MEASURE_PERF_ENABLE_FPS
 
@@ -338,14 +338,16 @@ bool Gfx_BuildSg_For_Segments(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
   uint16_t totalBytesPerRow = w * 2;
   // TM4C Hardware Limit: Maximum 1024 items per basic uDMA transfer
   const uint16_t MAX_DMA_TRANSFER = 1024;
+  // const uint16_t MAX_DMA_TRANSFER = 600;
 
+  TIVA_LOGI(TASK_NAME, "Segments to build: (%u, %u) -> [%u, %u]", x, y, w, h);
   int row = 0;
   for (; row < h; row++) {
     uint32_t screenOffset = ((y + row) * 800) + x;
 
     uint32_t currentDestRAMG = screenOffset * 2;
     uint8_t *pCurrentSDRAM = (uint8_t *)&pActiveBuffer[screenOffset];
-    uint16_t bytesRemaining = totalBytesPerRow;
+    int32_t bytesRemaining = totalBytesPerRow;
 
     // Slice wide rows into uDMA-safe chunks (<= 1024 bytes)
     while (bytesRemaining > 0) {
@@ -362,11 +364,9 @@ bool Gfx_BuildSg_For_Segments(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
       newJob.length = chunkLength;
 
       // Push to ring buffer safely
-      MAP_IntDisable(INT_SSI3);
       g_DMAQueue.jobs[g_DMAQueue.head] = newJob;
       g_DMAQueue.head = (g_DMAQueue.head + 1) % MAX_DMA_JOBS;
       g_DMAQueue.count++;
-      MAP_IntEnable(INT_SSI3);
 
       // Advance pointers for the next chunk of this row
       pCurrentSDRAM += chunkLength;
@@ -377,34 +377,35 @@ bool Gfx_BuildSg_For_Segments(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
   return true;
 }
 
-// bool Gfx_BuildSg_For_Segments(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
-// int16_t w, int16_t h) {
-//     if (x < 0) { w += x; x = 0; }
-//     if (y < 0) { h += y; y = 0; }
-//     if (x + w > LCD_WIDTH) w = LCD_WIDTH - x;
-//     if (y + h > LCD_HEIGHT) h = LCD_HEIGHT - y;
-//     if (w <= 0 || h <= 0) return true;
-//
-//     uint16_t bytesPerRow = w * 2;
-//
-// 	int row = 0;
-//     for (; row < h; row++) {
-//         if (g_DMAQueue.count >= MAX_DMA_JOBS) return false;
-//
-//         uint32_t screenOffset = ((y + row) * LCD_WIDTH) + x;
-//
-//         DMARenderJob_t newJob;
-//         newJob.pSrcSDRAM = (uint8_t *)&pActiveBuffer[screenOffset];
-//         newJob.destRAMG = screenOffset * 2;
-//         newJob.length = bytesPerRow;
-//
-//         // Protect queue modification
-//         g_DMAQueue.jobs[g_DMAQueue.head] = newJob;
-//         g_DMAQueue.head = (g_DMAQueue.head + 1) % MAX_DMA_JOBS;
-//         g_DMAQueue.count++;
-//     }
-//     return true;
-// }
+/*
+bool Gfx_BuildSg_For_Segments(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
+int16_t w, int16_t h) {
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > LCD_WIDTH) w = LCD_WIDTH - x;
+    if (y + h > LCD_HEIGHT) h = LCD_HEIGHT - y;
+    if (w <= 0 || h <= 0) return true;
+
+    uint16_t bytesPerRow = w * 2;
+
+	int row = 0;
+    for (; row < h; row++) {
+        if (g_DMAQueue.count >= MAX_DMA_JOBS) return false;
+
+        uint32_t screenOffset = ((y + row) * LCD_WIDTH) + x;
+
+        DMARenderJob_t newJob;
+        newJob.pSrcSDRAM = (uint8_t *)&pActiveBuffer[screenOffset];
+        newJob.destRAMG = screenOffset * 2;
+        newJob.length = bytesPerRow;
+
+        // Protect queue modification
+        g_DMAQueue.jobs[g_DMAQueue.head] = newJob;
+        g_DMAQueue.head = (g_DMAQueue.head + 1) % MAX_DMA_JOBS;
+        g_DMAQueue.count++;
+    }
+    return true;
+}*/
 
 // --- ENGINE MEMORY FUNCTIONS ---
 void Gfx_loadIntoBuffer(uint32_t ui32Index, uint16_t ui16Pixel) {
@@ -612,16 +613,19 @@ void Gfx_render(void) {
   while (g_bSPI_TransferActive)
     ;
 
-  DisplayBitmap();
+  //DisplayBitmap();
 
   Gfx_BuildSG_For_Buffer((uint8_t *)g_pDrawingBuffer);
 
   HAL_SPI_CS_Enable();
   EVE_AddrForWr(RAM_G);
 
+  while(MAP_SSIBusy(SSI3_BASE));
+
   Gfx_Start_SG_Transfer();
   // g_ui32StartTxCycles = DWTGetCycleCounter();
 
+  DisplayBitmap();
 #ifndef GFX_ENABLE_INT
   HAL_SPI_CS_Disable();
 #endif
@@ -759,7 +763,7 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
         uint32_t linearIndex = (y * LCD_WIDTH) + x;
         psPixelBuffer[linearIndex] =
             (pixel16_t)g_pCurrentTheme->palette.background;
-        //psPixelBuffer[linearIndex] = (pixel16_t)(uint16_t)0xFF70;
+        // psPixelBuffer[linearIndex] = (pixel16_t)(uint16_t)0xFF70;
       }
     }
   }
@@ -803,7 +807,7 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
   return true;
 }
 
-
+/*
 void Gfx_RenderTask(void) {
   // Bandera estática para recordar si nos falta enviar la mitad inferior
   static bool g_bPendingBottomHalf = false;
@@ -813,7 +817,7 @@ void Gfx_RenderTask(void) {
   case RENDER_IDLE:
     // 1. If the queue is populated, start the pumping process!
     if (g_DMAQueue.count > 0) {
-      // DisplayBitmap(); // Depending on your EVE config, call this if needed
+      DisplayBitmap(); // Depending on your EVE config, call this if needed
       g_RenderEngine.state = RENDER_SEND_ROW;
       break;
     }
@@ -826,7 +830,7 @@ void Gfx_RenderTask(void) {
       // Enviar la MITAD INFERIOR (Desde Y = LCD_HEIGHT / 2, Altura = LCD_HEIGHT
       // / 2)
       Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, LCD_HEIGHT / 2, LCD_WIDTH,
-                               LCD_HEIGHT / 2);
+                               LCD_HEIGHT / 2.0f);
 
       break;
     }
@@ -841,10 +845,11 @@ void Gfx_RenderTask(void) {
       // B. Enviar solo la MITAD SUPERIOR a la cola DMA
       // (Desde Y = 0, Altura = LCD_HEIGHT / 2)
       Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, LCD_WIDTH,
-                               LCD_HEIGHT / 2);
+                               LCD_HEIGHT / 2.0f);
 
       // C. Levantar la bandera para enviar la parte inferior en la siguiente
       // vuelta
+
       g_bPendingBottomHalf = true;
 
       break;
@@ -942,8 +947,8 @@ void Gfx_RenderTask(void) {
             }
 
             // Margin of safety — absorbs font bearing overhang
-			wipeX -= 4;
-			wipeY -= 2;
+			wipeX -= 1;
+			wipeY -= 1;
 			textW += 8;
 			textH += 4;
 			
@@ -995,6 +1000,7 @@ void Gfx_RenderTask(void) {
           if (bboxW % 2 != 0) {
             bboxW += 1;
           }
+
           // if (bboxW % 2 != 0) {
           //                    bboxW += 1;
           //                }
@@ -1032,6 +1038,8 @@ void Gfx_RenderTask(void) {
     uint32_t addr = job.destRAMG;
     EVE_AddrForWr(addr);
 
+	HAL_SPI_TX();
+
     // Fire the DMA payload!
     HAL_SPI_uDMATransfer(job.pSrcSDRAM, NULL, job.length, true);
 
@@ -1055,11 +1063,16 @@ void Gfx_RenderTask(void) {
     // 3. Now it is completely safe to terminate the transfer
     HAL_SPI_CS_Disable();
 
+	
+    // g_RenderEngine.state = RENDER_IDLE;
+
     if (g_DMAQueue.count > 0) {
       g_RenderEngine.state = RENDER_SEND_ROW;
     } else {
       g_RenderEngine.state = RENDER_IDLE;
     }
+
+	// DisplayBitmap();
     break;
 
   case RENDER_WAIT_SG_ISR:
@@ -1075,4 +1088,220 @@ void Gfx_RenderTask(void) {
     }
     break;
   }
-}
+} */
+
+void Gfx_RenderTask(void) {
+  // Bandera estática para recordar si nos falta enviar la mitad inferior
+  static bool g_bPendingBottomHalf = false;
+
+  switch (g_RenderEngine.state) {
+
+  case RENDER_IDLE:
+    // 1. If the queue is populated, start the pumping process!
+    if (g_DMAQueue.count > 0) {
+      DisplayBitmap(); // Depending on your EVE config, call this if needed
+      g_RenderEngine.state = RENDER_SEND_ROW;
+      break;
+    }
+
+    // 2. ¿Nos quedó pendiente la mitad inferior del repintado masivo?
+    if (g_bPendingBottomHalf) {
+      g_bPendingBottomHalf = false;
+      Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, LCD_HEIGHT / 2, LCD_WIDTH,
+                               LCD_HEIGHT / 2);
+      break;
+    }
+
+    // 3. ¿Hay una nueva solicitud de repintado masivo?
+    if (g_bRequestFullRepaint) {
+      g_bRequestFullRepaint = false;
+      formManagerComposite(g_pDrawingBuffer);
+      Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, LCD_WIDTH,
+                               LCD_HEIGHT / 2);
+      g_bPendingBottomHalf = true;
+      break;
+    }
+
+    // 4. Sweep the Form Manager for dirty widgets!
+    if (g_psCurrentForm != NULL) {
+      gfx_GenericWidgetNode *iter = g_psCurrentForm->psWidgets;
+
+      while (iter != NULL) {
+        bool isDirty = false;
+        int16_t bboxX, bboxY, bboxW, bboxH;
+
+        if (iter->sWidget.eWidgetType == WD_TYPE_BUTTON) {
+          gfx_Button *btn = (gfx_Button *)iter->sWidget.pvWidget;
+          if (btn->bIsDirty) {
+            btn->bIsDirty = false;
+
+            int16_t textWidth = (btn->label != NULL) ? strlen(btn->label) * 10 : 0;
+            int16_t overflowX = 0;
+            if (textWidth > btn->size.width) {
+              overflowX = ((textWidth - btn->size.width) / 2) + 4;
+            }
+
+            int16_t w = btn->size.width + (overflowX * 2) + (btn->borderWidth * 2) + 4;
+            int16_t h = btn->size.height + (btn->borderWidth * 2) + 4;
+
+            int16_t oldX = btn->oldPos.x - overflowX - btn->borderWidth - 2;
+            int16_t oldY = btn->oldPos.y - btn->borderWidth - 2;
+            int16_t newX = btn->pos.x - overflowX - btn->borderWidth - 2;
+            int16_t newY = btn->pos.y - btn->borderWidth - 2;
+
+            bboxX = (oldX < newX) ? oldX : newX;
+            bboxY = (oldY < newY) ? oldY : newY;
+            int16_t rightEdge = ((oldX + w) > (newX + w)) ? (oldX + w) : (newX + w);
+            int16_t bottomEdge = ((oldY + h) > (newY + h)) ? (oldY + h) : (newY + h);
+            bboxW = rightEdge - bboxX;
+            bboxH = bottomEdge - bboxY;
+
+            btn->oldPos = btn->pos;
+            isDirty = true;
+          }
+        } else if (iter->sWidget.eWidgetType == WD_TYPE_LABEL) {
+          gfx_Label *lb = (gfx_Label *)iter->sWidget.pvWidget;
+
+          if (lb->bIsDirty && lb->text != NULL) {
+            int8_t fontId = -1;
+            switch (lb->typo) {
+            case TYPO_H1: fontId = g_pCurrentTheme->fonts.h1; break;
+            case TYPO_H2: fontId = g_pCurrentTheme->fonts.h2; break;
+            case TYPO_BODY: fontId = g_pCurrentTheme->fonts.body; break;
+            case TYPO_CAPTION: fontId = g_pCurrentTheme->fonts.caption; break;
+            case TYPO_MONO: fontId = g_pCurrentTheme->fonts.mono; break;
+            }
+
+            uint16_t textW = 0, textH = 0;
+            if (fontId >= 0) {
+              gfx_GetStringDimensions(lb->text, fontId, &textW, &textH, 1);
+            }
+
+            int16_t wipeX = lb->pos.x;
+            int16_t wipeY = lb->pos.y;
+
+            if (lb->alignment & ALIGN_HCENTER) { wipeX = lb->pos.x - (textW / 2); } 
+            else if (lb->alignment & ALIGN_RIGHT) { wipeX = lb->pos.x - textW; }
+
+            if (lb->alignment & ALIGN_VCENTER) { wipeY = lb->pos.y - (textH / 2); } 
+            else if (lb->alignment & ALIGN_BOTTOM) { wipeY = lb->pos.y - textH; }
+
+            wipeX -= 1;
+            wipeY -= 1;
+            textW += 8;
+            textH += 4;
+            
+            if (lb->oldSize.width > 0) {
+                bboxX = (wipeX < lb->oldPos.x) ? wipeX : lb->oldPos.x;
+                bboxY = (wipeY < lb->oldPos.y) ? wipeY : lb->oldPos.y;
+                int16_t rightEdge  = ((wipeX + textW) > (lb->oldPos.x + lb->oldSize.width))
+                                      ? (wipeX + textW) : (lb->oldPos.x + lb->oldSize.width);
+                int16_t bottomEdge = ((wipeY + textH) > (lb->oldPos.y + lb->oldSize.height))
+                                      ? (wipeY + textH) : (lb->oldPos.y + lb->oldSize.height);
+                bboxW = rightEdge  - bboxX;
+                bboxH = bottomEdge - bboxY;
+            } else {
+                bboxX = wipeX;
+                bboxY = wipeY;
+                bboxW = textW;
+                bboxH = textH;
+            }
+            
+            lb->oldPos.x     = wipeX;
+            lb->oldPos.y     = wipeY;
+            lb->oldSize.width  = textW;
+            lb->oldSize.height = textH;
+            
+            isDirty = true;
+            lb->bIsDirty = false;
+          }
+        }
+
+        if (isDirty) {
+          if (bboxX % 2 != 0) {
+            bboxX -= 1;
+            bboxW += 1;
+          }
+          if (bboxW % 2 != 0) {
+            bboxW += 1;
+          }
+
+          gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bboxX,
+                                    bboxY, bboxW, bboxH);
+
+          Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX, bboxY, bboxW,
+                                   bboxH);
+        }
+        iter = iter->psNext;
+      }
+    }
+    break;
+
+  case RENDER_SEND_ROW: {
+    // Pop the next dirty row safely
+    DMARenderJob_t job = g_DMAQueue.jobs[g_DMAQueue.tail];
+    g_DMAQueue.tail = (g_DMAQueue.tail + 1) % MAX_DMA_JOBS;
+    g_DMAQueue.count--;
+
+    // Assert CS LOW
+    HAL_SPI_CS_Enable();
+
+    // --- DEBUG FIX: Pure CPU Polling Transfer ---
+    uint8_t *pData = (uint8_t *)job.pSrcSDRAM;
+	uint32_t i = 0;
+    if (g_bIsQuadActive) {
+        // Set bus to Write direction
+        MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
+        
+        // Command + Address bytes
+        MAP_SSIDataPut(SSI3_BASE, (uint8_t)((job.destRAMG >> 16) | 0x80)); // 0x80 = MEM_WRITE
+        MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG >> 8));
+        MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG));
+
+        // Pump payload directly into TX FIFO
+        for (; i < job.length; i++) {
+            MAP_SSIDataPut(SSI3_BASE, pData[i]);
+        }
+    } else {
+        // Legacy SPI
+        EVE_AddrForWr(job.destRAMG);
+
+        for (i = 0; i < job.length; i++) {
+            // Using your existing block/read-write wrapper
+            HAL_SPI_ReadWrite8(pData[i]);
+        }
+    }
+
+    // Absolutely crucial: Wait for the last byte to physically leave the wire
+    while (MAP_SSIBusy(SSI3_BASE)) {}
+
+    // Pull CS High
+    HAL_SPI_CS_Disable();
+
+    // Since the CPU blocked until done, bypass RENDER_WAIT_DMA and jump to the next job
+    if (g_DMAQueue.count > 0) {
+      g_RenderEngine.state = RENDER_SEND_ROW;
+    } else {
+      g_RenderEngine.state = RENDER_IDLE;
+    }
+    break;
+  }
+
+  case RENDER_WAIT_DMA:
+    // Left empty/bypassed intentionally for CPU debugging. 
+    // Acts as a safety net back to IDLE.
+    g_RenderEngine.state = RENDER_IDLE;
+    break;
+
+  case RENDER_WAIT_SG_ISR:
+    if (!g_bSPI_TransferActive) {
+#ifndef GFX_ENABLE_INT
+      HAL_SPI_CS_Disable();
+#endif
+      g_RenderEngine.state = RENDER_IDLE;
+    } else {
+      return;
+    }
+    break;
+  }
+} 

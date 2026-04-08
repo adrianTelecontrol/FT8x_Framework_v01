@@ -25,7 +25,7 @@ void gestureEngineInit(void) {
   ui32LastPollTicks = DWTGetCycleCounter();
 }
 
-
+/*
 void gestureEngineTask(void) {
     uint32_t ui32CurrentTicks = DWTGetCycleCounter();
 
@@ -73,9 +73,9 @@ void gestureEngineTask(void) {
     }
 
     g_sPastTouchStatus = g_sCurTouchStatus;
-}
+} */
 
-/*
+
 void gestureEngineTask(void) {
     uint32_t ui32CurrentTicks = DWTGetCycleCounter();
 
@@ -130,7 +130,7 @@ void gestureEngineTask(void) {
     }
 
     g_sPastTouchStatus = g_sCurTouchStatus;
-}*/
+}
 
 gesture_type_e gestureEngineGetGesture(void) { return g_eGestureType; }
 

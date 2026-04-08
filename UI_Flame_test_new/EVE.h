@@ -56,11 +56,13 @@ uint16_t EVE_CheckFreeSpace(uint16_t CmdOffset);
 uint32_t EVE_ReadCalibrateReg32(uint8_t i);
 void EVE_WriteAllCalibrate32(uint32_t data[6]);
 
+void EVE_ReadMemoryBlock(uint32_t ftAddress, uint8_t *destBuffer, uint32_t numBytes);
 //*****************************************************************************
 //
 //                          EVE API
 //
 //*****************************************************************************
+
 void API_Init(void);
 void API_WakeUpScreen(void);
 void API_LIB_BeginCoProList(void);

@@ -10,6 +10,7 @@ typedef enum {
 	EVT_CMD_FULL_REPAINT,
 	// Updates from System -> GUI
 	EVT_SYS_COUNTER_CHANGED,
+	EVT_SYS_COUNTER2_CHANGED,
 	NUM_EVENTS,
 } EventID_e;
 

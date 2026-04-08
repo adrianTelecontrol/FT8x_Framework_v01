@@ -21,10 +21,9 @@
 #define HAL_SPI_SDO 	GPIO_PIN_2
 #define HAL_SPI_SDI 	GPIO_PIN_3
 
-
-
+// With 20MHz at high bitrate it works fine
 #define HAL_SPI_LOW_BITRATE		9E6		// 9Mhz
-#define HAL_SPI_HIGH_BITRATE	20E6	// 15Mhz
+#define HAL_SPI_HIGH_BITRATE	20E6		// 15Mhz
 
 #define HAL_GPIO_HIGH 	0XFF // Estado alto para los pines
 #define HAL_GPIO_LOW 	0X00  // Estado bajo para los pines
@@ -40,6 +39,7 @@
 extern uint8_t g_HAL_uDMA_ControlTable[1024];
 extern volatile bool g_bSPI_TransferActive;
 extern volatile uint32_t g_ui32ExecDurMs;
+extern bool g_bIsQuadActive;
 
 inline void HAL_SPI_CS_Enable() { GPIOPinWrite(GPIO_PORTQ_BASE, HAL_SPI_CS, HAL_GPIO_LOW); }
 inline void HAL_SPI_CS_Disable() { GPIOPinWrite(GPIO_PORTQ_BASE, HAL_SPI_CS, HAL_GPIO_HIGH); }
@@ -52,6 +52,23 @@ inline void HAL_SPI_LED_Off() {
   GPIOPinWrite(GPIO_PORTN_BASE, HAL_SPI_LED, HAL_GPIO_LOW);
 }
 
+inline void HAL_SPI_RX() {
+	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR1, HAL_GPIO_LOW);
+	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR2, HAL_GPIO_LOW);
+	SysCtlDelay(3);
+}
+
+inline void HAL_SPI_TX() {
+	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR1, HAL_GPIO_HIGH);
+	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR2, HAL_GPIO_HIGH);
+	SysCtlDelay(3);
+}
+
+inline void HAL_SPI_SingleMode() {
+  	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR1, HAL_GPIO_HIGH);
+  	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR2, HAL_GPIO_LOW);
+}
+
 //
 // Function declarations
 //
@@ -62,6 +79,8 @@ bool HAL_SPI_IsBusy(void);
 bool HAL_SPI_uDMATransfer(const uint8_t *pTxBuffer,
                                     uint8_t *pRxBuffer,
                                     uint32_t count , bool bIsBlocking);
+
+void HAL_SPI_SwitchTo_Quad(void);
 
 void HAL_SPI_SetHighSpeed(void);
 

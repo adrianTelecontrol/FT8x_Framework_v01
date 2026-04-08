@@ -22,7 +22,7 @@
 #define HAL_SPI_SDI 	GPIO_PIN_3
 
 #define HAL_SPI_LOW_BITRATE		9E6		// 9Mhz
-#define HAL_SPI_HIGH_BITRATE	15E6	// 15Mhz
+#define HAL_SPI_HIGH_BITRATE	25E6	// 15Mhz
 
 #define HAL_GPIO_HIGH 	0XFF // Estado alto para los pines
 #define HAL_GPIO_LOW 	0X00  // Estado bajo para los pines

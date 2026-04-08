@@ -24,7 +24,6 @@
 #include "tiva_config.h"
 #include "tiva_log.h"
 
-
 #include "EVE.h"
 
 #define MEM_WRITE 0x80 // FT800 Host Memory Write
@@ -274,22 +273,22 @@ void EVE_CmdWrite(uint8_t EVECmd, uint8_t Param) {
 }*/
 
 uint16_t EVE_IncCMDOffset(uint16_t currentOffset, uint16_t commandSize) {
-    uint16_t newOffset;
+  uint16_t newOffset;
 
-    // 1. Calculate the raw offset
-    newOffset = currentOffset + commandSize;
+  // 1. Calculate the raw offset
+  newOffset = currentOffset + commandSize;
 
-    // 2. Force 4-byte (32-bit) alignment BEFORE wrapping!
-    // Adding 3 and masking with ~3 rounds up to the nearest multiple of 4.
-    newOffset = (newOffset + 3) & ~3;
+  // 2. Force 4-byte (32-bit) alignment BEFORE wrapping!
+  // Adding 3 and masking with ~3 rounds up to the nearest multiple of 4.
+  newOffset = (newOffset + 3) & ~3;
 
-    // 3. Bulletproof Wrap-Around
-    // The bitmask 0x0FFF strictly limits the value to 0-4095.
-    // This physically prevents the offset from EVER going out of bounds,
-    // even if commandSize is 50,000.
-    newOffset = newOffset & 0x0FFF;
+  // 3. Bulletproof Wrap-Around
+  // The bitmask 0x0FFF strictly limits the value to 0-4095.
+  // This physically prevents the offset from EVER going out of bounds,
+  // even if commandSize is 50,000.
+  newOffset = newOffset & 0x0FFF;
 
-    return newOffset;
+  return newOffset;
 }
 
 // ------ Wait for co-processor read and write pointers to be equal ------------
@@ -367,7 +366,7 @@ void EVE_Init(void) {
 
   // Setup the CLk to be external an run at default speed (60 MHz)
   EVE_CmdWrite(FT81x_HOST_CMD_CLKEXT, FT81x_HOST_PARAM_EMPTY);
-  //EVE_CmdWrite(0x62, FT81x_HOST_PARAM_EMPTY);
+  // EVE_CmdWrite(0x62, FT81x_HOST_PARAM_EMPTY);
 
   // Cmd_Active start the self diagnosis process and may take up to 300ms.
   // But we can read REG_ID to verify this step
@@ -458,6 +457,7 @@ void EVE_Init(void) {
   SysCtlDelay(MS_2_CLK(100));
   HAL_SPI_SetHighSpeed();
 }
+
 
 void API_WakeUpScreen(void) {
   HAL_SPI_PD_Low();

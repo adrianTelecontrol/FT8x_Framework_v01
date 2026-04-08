@@ -24,6 +24,7 @@ gfx_GenericWidget secondWidget;
 gfx_GenericWidget thirdWidget;
 gfx_GenericWidget changeThemeButton;
 gfx_GenericWidget counterLabel;
+gfx_GenericWidget counterLabel2; 
 
 // 2. NEW: The Persistent Memory for the actual widget data
 gfx_Rectangle panelData;
@@ -32,6 +33,7 @@ gfx_Button btn2Data;
 gfx_Button themeBtnData;
 gfx_Label titleData;
 gfx_Label counterData;
+gfx_Label counterData2;
 
 // 3. NEW: The static text buffer to replace malloc
 static char counterTextBuffer[16];
@@ -41,6 +43,16 @@ static char counterTextBuffer[16];
 static void onCounterUpdated(int32_t arg) // Using int32_t assuming your Event payload is int32_t
 {
     gfx_Label *lb = (gfx_Label *)counterLabel.pvWidget;
+    
+    // Safely format the dynamic argument into the persistent static buffer
+    sprintf(lb->text, "%u", arg); 
+    
+    lb->bIsDirty = true;
+} 
+
+static void onCounter2Updated(int32_t arg) // Using int32_t assuming your Event payload is int32_t
+{
+    gfx_Label *lb = (gfx_Label *)counterLabel2.pvWidget;
     
     // Safely format the dynamic argument into the persistent static buffer
     sprintf(lb->text, "%u", arg); 
@@ -140,7 +152,7 @@ void initHomeForm(void)
         .oldPos.y = LCD_HEIGHT / 2 - BUTTON_HEIGHT / 2,
         .borderWidth = 1,
         .state = BTN_STATE_NORMAL,
-        .onPosChanged = pushButtonOnPosChanged,
+        .onPosChanged = NULL,
         .onPressed = pushButtonOnPressed,
         .onRelease = pushButtonOnRelease,
         .radius = 10,
@@ -153,8 +165,8 @@ void initHomeForm(void)
     themeBtnData = (gfx_Button){
         .name = "btnTheme",
         .label = "TEMA",
-        .size.height = 100,
-        .size.width = 100,
+        .size.height = 106,
+        .size.width = 125,
         .typo = TYPO_BODY,         
         .style = STYLE_SUCCESS,  
         .pos.x = LCD_WIDTH / 2 - 50,
@@ -191,9 +203,9 @@ void initHomeForm(void)
     counterData = (gfx_Label){
         .text = counterTextBuffer, // Point directly to our static array
 		.name = "contador",
-        .pos.x = LCD_WIDTH / 2,
-        .pos.y = 90,
-        .oldPos.x = LCD_WIDTH / 2,
+        .pos.x = LCD_WIDTH * 2.0 / 3.0,	
+        .pos.y = 100,                   
+        .oldPos.x = LCD_WIDTH / 2,       
         .oldPos.y = 90,
         .alignment = ALIGN_CENTER,
         .typo = TYPO_H2,           
@@ -202,9 +214,25 @@ void initHomeForm(void)
 	
     counterLabel.eWidgetType = WD_TYPE_LABEL;
     counterLabel.pvWidget = (void *)&counterData;
+
+    counterData2 = (gfx_Label){
+        .text = counterTextBuffer, // Point directly to our static array
+		.name = "contador2",
+        .pos.x = LCD_WIDTH * 1.0 / 3.0,
+        .pos.y = 100,
+        .oldPos.x = LCD_WIDTH / 2,
+        .oldPos.y = 90,
+        .alignment = ALIGN_CENTER,
+        .typo = TYPO_H2,           
+        .style = STYLE_SUCCESS,    
+    };
+	
+    counterLabel2.eWidgetType = WD_TYPE_LABEL;
+    counterLabel2.pvWidget = (void *)&counterData2;
     
     // Subscribe to events
     Event_Subscribe(EVT_SYS_COUNTER_CHANGED, onCounterUpdated);
+    Event_Subscribe(EVT_SYS_COUNTER2_CHANGED, onCounter2Updated);
 
     // Initial render setup
     memset(counterTextBuffer, 0, sizeof(counterTextBuffer));
@@ -214,6 +242,7 @@ void initHomeForm(void)
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &buttonWidget);
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &secondWidget);
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &counterLabel);
+    canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &counterLabel2);
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &thirdWidget);
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &changeThemeButton);
 

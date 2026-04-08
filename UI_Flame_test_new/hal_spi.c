@@ -44,6 +44,8 @@ volatile bool g_bSPI_TransferActive = false;
 static const volatile uint8_t g_dummyTxZero = 0;
 volatile uint32_t g_ui32ExecDurMs;
 
+bool g_bIsQuadActive = false;
+
 // SSI Interrupt handler
 void SSI3IntHandler(void) {
   // 1. Read and clear the interrupt status
@@ -92,93 +94,92 @@ uint8_t HAL_SPI_ReadWrite8(uint16_t txData) {
 }
 
 // --- INIT ---
-// --- INIT ---
+// 1. MUST be static to survive function return in non-blocking mode
+static uint32_t g_dummyRxByte; 
+// static uint32_t g_dummyTxZero = 0;
+
 bool HAL_SPI_uDMATransfer(const uint8_t *pTxBuffer, uint8_t *pRxBuffer,
                           uint32_t count, bool bIsBlocking) {
-  if (count == 0)
-    return true;
+  // Límite de hardware del uDMA en modo básico
+  if (count == 0 || count > 1024) {
+      return false; 
+  }
 
-  uint8_t g_dummyRxByte;
+  // Identificar si estamos haciendo una escritura pura en QuadSPI
+  bool bIsQuadWrite = g_bIsQuadActive && (pRxBuffer == NULL);
 
-  // Clear flag
-  g_bSPI_TransferActive = true;
-
-  MAP_SSIIntDisable(SSI3_BASE, SSI_DMATX | SSI_DMARX);
+  MAP_SSIIntDisable(SSI3_BASE, SSI_DMATX | SSI_DMARX | SSI_RXFF | SSI_RXOR | SSI_RXTO);
   MAP_SSIIntClear(SSI3_BASE, SSI_DMATX | SSI_DMARX | SSI_RXTO | SSI_RXOR);
 
   MAP_uDMAChannelDisable(UDMA_CH14_SSI3RX);
   MAP_uDMAChannelDisable(UDMA_CH15_SSI3TX);
 
-  MAP_SSIIntDisable(SSI3_BASE, SSI_RXFF | SSI_RXOR | SSI_RXTO | SSI_DMARX);
-  MAP_SSIIntClear(SSI3_BASE, SSI_DMATX | SSI_DMARX | SSI_RXTO | SSI_RXOR);
-
+  // Limpiar basura del FIFO RX
   uint32_t garbage;
-  while (MAP_SSIDataGetNonBlocking(SSI3_BASE, &garbage))
-    ;
+  while (MAP_SSIDataGetNonBlocking(SSI3_BASE, &garbage));
 
-  void *pDest =
-      (pRxBuffer != NULL) ? (void *)pRxBuffer : (void *)&g_dummyRxByte;
-  uint32_t dstInc = (pRxBuffer != NULL) ? UDMA_DST_INC_8 : UDMA_DST_INC_NONE;
-
+  // ---------------------------------------------------------
+  // CONFIGURACIÓN TX (Siempre requerida)
+  // ---------------------------------------------------------
   void *pSrc = (pTxBuffer != NULL) ? (void *)pTxBuffer : (void *)&g_dummyTxZero;
   uint32_t srcInc = (pTxBuffer != NULL) ? UDMA_SRC_INC_8 : UDMA_SRC_INC_NONE;
 
-  MAP_uDMAChannelAttributeDisable(UDMA_CH14_SSI3RX, UDMA_ATTR_ALTSELECT);
   MAP_uDMAChannelAttributeDisable(UDMA_CH15_SSI3TX, UDMA_ATTR_ALTSELECT);
-  
-  // Configure RX
-  MAP_uDMAChannelControlSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
-                            UDMA_SIZE_8 | UDMA_SRC_INC_NONE | dstInc |
-                                UDMA_ARB_1);
-
-  MAP_uDMAChannelTransferSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
-                             UDMA_MODE_BASIC, (void *)(SSI3_BASE + SSI_O_DR),
-                             pDest, count);
-
-  // Configure TX
   MAP_uDMAChannelControlSet(UDMA_CH15_SSI3TX | UDMA_PRI_SELECT,
-                            UDMA_SIZE_8 | srcInc | UDMA_DST_INC_NONE |
-                                UDMA_ARB_1);
-
+                            UDMA_SIZE_8 | srcInc | UDMA_DST_INC_NONE | UDMA_ARB_4);
   MAP_uDMAChannelTransferSet(UDMA_CH15_SSI3TX | UDMA_PRI_SELECT,
-                             UDMA_MODE_BASIC, pSrc,
-                             (void *)(SSI3_BASE + SSI_O_DR), count);
-
-  // Enable uDMA Channels
-  MAP_uDMAChannelEnable(UDMA_CH14_SSI3RX);
+                             UDMA_MODE_BASIC, pSrc, (void *)(SSI3_BASE + SSI_O_DR), count);
   MAP_uDMAChannelEnable(UDMA_CH15_SSI3TX);
 
-  // ====================================================================
-  // CRITICAL FIX 1: Tell the SPI hardware to actually trigger the uDMA!
-  // ====================================================================
-  MAP_SSIDMAEnable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+  // ---------------------------------------------------------
+  // CONFIGURACIÓN RX (Excluida en QuadSPI Write)
+  // ---------------------------------------------------------
+  if (!bIsQuadWrite) {
+      void *pDest = (pRxBuffer != NULL) ? (void *)pRxBuffer : (void *)&g_dummyRxByte;
+      uint32_t dstInc = (pRxBuffer != NULL) ? UDMA_DST_INC_8 : UDMA_DST_INC_NONE;
 
+      MAP_uDMAChannelAttributeDisable(UDMA_CH14_SSI3RX, UDMA_ATTR_ALTSELECT);
+      MAP_uDMAChannelControlSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
+                                UDMA_SIZE_8 | UDMA_SRC_INC_NONE | dstInc | UDMA_ARB_4);
+      MAP_uDMAChannelTransferSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
+                                 UDMA_MODE_BASIC, (void *)(SSI3_BASE + SSI_O_DR), pDest, count);
+      MAP_uDMAChannelEnable(UDMA_CH14_SSI3RX);
+
+      // Activar hardware SPI para pedir datos al DMA en ambas direcciones
+      MAP_SSIDMAEnable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+  } else {
+      // Activar hardware SPI SOLO para pedir datos de transmisión
+      MAP_SSIDMAEnable(SSI3_BASE, SSI_DMA_TX);
+  }
+
+  // ---------------------------------------------------------
+  // EJECUCIÓN
+  // ---------------------------------------------------------
   if (!bIsBlocking) {
-    // CRITICAL FIX 2: Removed MAP_SSIIntEnable(SSI3_BASE, SSI_DMATX); 
-    // Just flag it as active. The Gfx_RenderTask will poll the hardware directly.
     g_bSPI_TransferActive = true;
   } else {
-
-    while ((MAP_uDMAChannelModeGet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT) !=
-            UDMA_MODE_STOP) ||
-           (MAP_uDMAChannelModeGet(UDMA_CH15_SSI3TX | UDMA_PRI_SELECT) !=
-            UDMA_MODE_STOP)) {
-      // Busy Wait
-      SysCtlDelay(10);
+    // Esperar a que el canal TX termine
+    while (MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
+        // En Single SPI, proteger contra Overruns
+        if (!bIsQuadWrite && (HWREG(SSI3_BASE + SSI_O_RIS) & SSI_RIS_RORRIS)) {
+            HWREG(SSI3_BASE + SSI_O_ICR) = SSI_ICR_RORIC;
+        }
     }
-
-    while (MAP_SSIBusy(SSI3_BASE))
-      ;
-
-    g_bSPI_TransferActive = false;
     
-    MAP_uDMAChannelDisable(UDMA_CH14_SSI3RX);
+    // Esperar a que los cables físicos terminen de enviar
+    while (MAP_SSIBusy(SSI3_BASE));
+
+    // Limpieza
     MAP_uDMAChannelDisable(UDMA_CH15_SSI3TX);
     
-    // ====================================================================
-    // CRITICAL FIX 3: Clean up the SPI DMA triggers for the next cycle
-    // ====================================================================
-    MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+    if (!bIsQuadWrite) {
+        MAP_uDMAChannelDisable(UDMA_CH14_SSI3RX);
+        MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+    } else {
+        MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX);
+    }
+    
+    g_bSPI_TransferActive = false;
   }
 
   return true;
@@ -197,32 +198,96 @@ void uDMA_Init(void) {
 }
 
 void SPI3_Init(void) {
+  // Habilitar el periférico SSI3
   MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI3);
   while (!MAP_SysCtlPeripheralReady(SYSCTL_PERIPH_SSI3))
     ;
 
+  // Habilitar el Puerto Q (CLK, D0, D1)
+  MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOQ);
+  while (!MAP_SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOQ))
+    ;
+    
+  // Habilitar el Puerto P (D2, D3) - ¡Corregido a PP0 y PP1!
+  MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOP);
+  while (!MAP_SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOP))
+    ;
+
+  // Configurar el multiplexor de pines para SSI3
   MAP_GPIOPinConfigure(GPIO_PQ0_SSI3CLK);
-  MAP_GPIOPinConfigure(GPIO_PQ2_SSI3XDAT0);
-  MAP_GPIOPinConfigure(GPIO_PQ3_SSI3XDAT1);
+  MAP_GPIOPinConfigure(GPIO_PQ2_SSI3XDAT0);   // D0
+  MAP_GPIOPinConfigure(GPIO_PQ3_SSI3XDAT1);   // D1
+  MAP_GPIOPinConfigure(GPIO_PP0_SSI3XDAT2);   // D2 (Nuevo IO2 en PP0)
+  MAP_GPIOPinConfigure(GPIO_PP1_SSI3XDAT3);   // D3 (Nuevo IO3 en PP1)
+
+  // Configurar los pads y el tipo de pin para el Puerto Q (CLK, D0, D1)
   MAP_GPIOPadConfigSet(GPIO_PORTQ_BASE, GPIO_PIN_0 | GPIO_PIN_2 | GPIO_PIN_3,
-                       GPIO_STRENGTH_12MA, GPIO_PIN_TYPE_STD);
+                       GPIO_STRENGTH_4MA, GPIO_PIN_TYPE_STD);
   MAP_GPIOPinTypeSSI(GPIO_PORTQ_BASE, GPIO_PIN_0 | GPIO_PIN_2 | GPIO_PIN_3);
 
+  // Configurar los pads y el tipo de pin para el Puerto P (D2, D3)
+  MAP_GPIOPadConfigSet(GPIO_PORTP_BASE, GPIO_PIN_0 | GPIO_PIN_1,
+                       GPIO_STRENGTH_4MA, GPIO_PIN_TYPE_STD);
+  MAP_GPIOPinTypeSSI(GPIO_PORTP_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
+  // Configurar SSI en modo Single (se cambiará a Quad más adelante mediante software)
   MAP_SSIConfigSetExpClk(SSI3_BASE, g_ui32SysClock, SSI_FRF_MOTO_MODE_0,
                          SSI_MODE_MASTER, HAL_SPI_LOW_BITRATE, 8);
 
   MAP_SSIDMAEnable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
 
-  // Enable Interrupts (Required for uDMA even in blocking mode)
+  // Habilitar Interrupciones (Requeridas para uDMA incluso en modo bloqueante)
   MAP_IntEnable(INT_SSI3);
   MAP_SSIEnable(SSI3_BASE);
 }
 
+void HAL_SPI_SwitchTo_Quad(void) {
+    // 1. Ensure the last single-mode transaction is fully complete
+    while (MAP_SSIBusy(SSI3_BASE));
+    SysCtlDelay(3); // Guard: shift register fully done
+
+    // 2. Drain any garbage left in the RX FIFO from previous transactions
+    uint32_t trash;
+    while (MAP_SSIDataGetNonBlocking(SSI3_BASE, &trash));
+
+    // 3. Safely disable, switch mode, re-enable
+    MAP_SSIDisable(SSI3_BASE);
+    SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
+    MAP_SSIEnable(SSI3_BASE);
+
+    // 4. Bus starts in TX direction (QUAD_WRITE)
+    HAL_SPI_TX();
+
+    g_bIsQuadActive = true;
+}
+
 void HAL_SPI_SetHighSpeed(void) {
-  SSIDisable(SSI3_BASE);
-  SSIConfigSetExpClk(SSI3_BASE, g_ui32SysClock, SSI_FRF_MOTO_MODE_0,
-                     SSI_MODE_MASTER, HAL_SPI_HIGH_BITRATE, 8);
-  SSIEnable(SSI3_BASE);
+    // Ensure bus is idle before touching the peripheral
+    while (MAP_SSIBusy(SSI3_BASE));
+    SysCtlDelay(3);
+
+    uint32_t trash;
+    while (MAP_SSIDataGetNonBlocking(SSI3_BASE, &trash));
+
+    MAP_SSIDisable(SSI3_BASE);
+
+    // Reconfigure clock speed — this resets control registers
+    SSIConfigSetExpClk(SSI3_BASE, g_ui32SysClock, SSI_FRF_MOTO_MODE_0,
+                       SSI_MODE_MASTER, HAL_SPI_HIGH_BITRATE, 8);
+
+    // Re-apply Quad mode if it was active, since SSIConfigSetExpClk wiped it
+    if (g_bIsQuadActive) {
+        SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
+    }
+
+    MAP_SSIEnable(SSI3_BASE);
+
+    // Ensure buffer direction is correct after the reconfiguration
+    if (g_bIsQuadActive) {
+        HAL_SPI_TX();
+    } else {
+        HAL_SPI_SingleMode();
+    }
 }
 
 void HAL_SPI_Init(void) {
@@ -231,7 +296,7 @@ void HAL_SPI_Init(void) {
   GPIOPinTypeGPIOOutput(GPIO_PORTN_BASE, HAL_SPI_LED);
   GPIOPinTypeGPIOOutput(GPIO_PORTK_BASE, HAL_SPI_DIR1);
   GPIOPinTypeGPIOOutput(GPIO_PORTK_BASE, HAL_SPI_DIR2);
-  GPIOPadConfigSet(GPIO_PORTQ_BASE, HAL_SPI_CS, GPIO_STRENGTH_12MA,
+  GPIOPadConfigSet(GPIO_PORTQ_BASE, HAL_SPI_CS, GPIO_STRENGTH_4MA,
                    GPIO_PIN_TYPE_STD);
   
   GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR1, HAL_GPIO_HIGH);

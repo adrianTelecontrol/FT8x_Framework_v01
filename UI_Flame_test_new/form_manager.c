@@ -27,7 +27,6 @@ void formManagerLoadForm(gfx_Canvas *form)
 	}
 }
 
-/*
 bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture)
 {
     static Position newPos;
@@ -124,8 +123,9 @@ bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture)
     }
 
     return true;
-} */
+} 
 
+/*
 bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture)
 {
     gfx_GenericWidgetNode *temp = NULL;
@@ -181,7 +181,7 @@ bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture)
     }
 
     return true;
-}
+} */
 
 void formManagerComposite(pixel16_t *psPixelBuffer)
 {

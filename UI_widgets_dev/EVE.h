@@ -74,6 +74,7 @@ void API_LIB_WriteDataRAMG_ui32(const uint32_t *ImgData, uint32_t DataSize,
 void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc, const uint32_t ui32Size, uint32_t ui32DestAddr);
 uint8_t API_SendString(const char *string);
 void API_LIB_WriteDataToCMD(const uint8_t *ImgData, uint32_t TotalDataSize);
+
 // Graphics instructions
 void API_CLEAR_COLOR_RGB(uint8_t R, uint8_t G, uint8_t B);
 void API_CLEAR(uint8_t C, uint8_t S, uint8_t T);

@@ -43,6 +43,8 @@
 #include "sdram_hal.h"
 #include "sdspi_hal.h"
 #include "tiva_log.h"
+#include "event_engine.h"
+#include "video_engine.h"
 #include "test/control_sim.h"
 
 
@@ -335,22 +337,23 @@ int main(void) {
   TIVA_LOGI(TASK_NAME, "Screen is awake!");
   SysCtlDelay(MS_2_CLK(1000));
   TIVA_LOGI(TASK_NAME, "Running Quick FT81x SPI verification... ");
-  //QuickSanityCheck();
+  QuickSanityCheck();
 
   TIVA_LOGI(TASK_NAME, "Clearing the screen to 0x%x color", EVE_PINK);
   EVE_MemWrite8(REG_PWM_DUTY, 128);
   EVE_MemWrite8(REG_CSPREAD, 0);
-  gfx_start(EVE_PINK);
-  gfx_end();
+  // gfx_start(EVE_PINK);
+  // gfx_end();
 
   //initializeSquaresPhysics(); // Initialize squares
 
+  //EVE_PlayIntroVideo();
   gfx_calibrate();
 
   StartCycleCounter(); // The DWT will be our clock source
 
   Theme_Init();
-  Theme_SetMode(false);
+  Theme_SetMode(0);
   initHomeForm();
 
   // Test Unit
@@ -359,12 +362,18 @@ int main(void) {
   // Send initial full frame
   formManagerComposite(g_pDrawingBuffer);
 
+  //HAL_SPI_SingleMode();
+  //SysCtlDelay(MS_2_CLK(100));
   Gfx_render();
 
   gestureEngineInit();
+
+  Event_Post(EVT_CMD_FULL_REPAINT, 0);
   
   while (1) {
 	Gfx_RenderTask();
+    //formManagerComposite(g_pDrawingBuffer);
+  	//Gfx_render();
 
     gestureEngineTask();
 
