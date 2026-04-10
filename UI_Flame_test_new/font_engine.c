@@ -52,6 +52,7 @@ void gfx_GetStringDimensions(const char *str, int8_t fontId, uint16_t *pWidth, u
     *pHeight = sFont->yAdvance * scale;
 }
 
+
 void gfx_DrawChar(pixel16_t *pBuffer, int8_t fontId, int16_t *cursorX,
                   int16_t cursorY, char c, uint16_t color) {
   if (fontId < 0 || fontId >= MAX_LOADED_FONTS || !g_FontCache[fontId].isLoaded)

@@ -44,6 +44,7 @@ typedef enum {
 
 extern gfx_Theme_t *g_pCurrentTheme;
 
+int8_t Theme_ResolveFontId(gfx_TypoStyle_e typo);
 void Theme_Init(void);
 void Theme_SetMode(bool isDark);
 void Theme_SetFontFamily(gfx_FontFamily_e newFamily);

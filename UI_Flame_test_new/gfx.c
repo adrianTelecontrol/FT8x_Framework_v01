@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "utils/uartstdio.h"
 
@@ -14,8 +15,11 @@
 #include "font_engine.h"
 #include "graphics_engine.h"
 #include "gfx_theme.h"
+#include "helpers.h"
 
 #include "gfx.h"
+
+const char *TASK_NAME = "gfx";
 
 #ifndef _swap_int16_t
 #define _swap_int16_t(a, b)                                                    \
@@ -64,6 +68,13 @@ bool gfx_initRegTouch(void *widget, widget_type_e type) {
     wd->regTouch.x2 = wd->pos.x + wd->size.width;
     wd->regTouch.y1 = wd->pos.y;
     wd->regTouch.y2 = wd->pos.y + wd->size.height;
+  } else if (type == WD_TYPE_SLIDER) {
+    gfx_Slider *wd = (gfx_Slider *)widget;
+    
+    wd->regTouch.x1 = wd->pos.x;
+    wd->regTouch.x2 = wd->pos.x + wd->size.width;
+    wd->regTouch.y1 = wd->pos.y - wd->knobRadius;
+    wd->regTouch.y2 = wd->pos.y + wd->size.height + wd->knobRadius;
   }
 
   return true;
@@ -155,6 +166,12 @@ bool gfx_compositeFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer) {
       break;
     case WD_TYPE_LABEL:
       gfx_drawLabel(psPixelBuffer, (gfx_Label *)iter->sWidget.pvWidget);
+	  break;
+	case WD_TYPE_SLIDER:
+      gfx_drawSlider(psPixelBuffer, (gfx_Slider *)iter->sWidget.pvWidget);	
+      break;
+	case WD_TYPE_GRAPH:
+      gfx_drawGraph(psPixelBuffer, (gfx_Graph *)iter->sWidget.pvWidget);	
       break;
     default:
       break;
@@ -174,6 +191,9 @@ bool gfx_isWidgetTouched(gfx_GenericWidget *wd, TouchStatus touch) {
   switch (wd->eWidgetType) {
   case WD_TYPE_BUTTON:
     ret = gfx_touchObject(((gfx_Button *)wd->pvWidget)->regTouch, touch);
+    break;
+  case WD_TYPE_SLIDER:
+    ret = gfx_touchObject(((gfx_Slider *)wd->pvWidget)->regTouch, touch);
     break;
   default:
     break;
@@ -891,4 +911,550 @@ void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb) {
 void gfx_drawRectangle(pixel16_t *pBuf, gfx_Rectangle *rect)
 {
 	gfx_fillRect(pBuf, rect->pos.x, rect->pos.y, rect->dim.width, rect->dim.height, rect->color);
+}
+/*
+void gfx_drawSlider(pixel16_t *pBuf, gfx_Slider *sl) {
+    if (!pBuf || !sl || !g_pCurrentTheme) return;
+
+    // 1. Resolve colors (Replace with your actual theme macros)
+    uint16_t trackBgColor = g_pCurrentTheme->palette.secondary;      // Dark Gray
+    uint16_t trackActiveColor = g_pCurrentTheme->palette.success;  // Green/Primary
+    uint16_t knobColor = g_pCurrentTheme->palette.primary;         // White
+
+    // Protect mathematical limits
+    if (sl->currentValue < sl->minValue) sl->currentValue = sl->minValue;
+    if (sl->currentValue > sl->maxValue) sl->currentValue = sl->maxValue;
+
+    // =========================================================
+    // DYNAMIC RADIUS & GEOMETRY
+    // =========================================================
+    // Automatically calculate radius based on height (with 2px padding)
+    // uint16_t dynamicKnobRadius = (sl->size.height / 2) - 2;
+    uint16_t dynamicKnobRadius = sl->size.height * 1.15;
+	sl->knobRadius = dynamicKnobRadius;
+
+    int16_t trackY = sl->pos.y + (sl->size.height / 2) - (sl->size.height / 2);
+
+    // The knob's center must stay inside the track. 
+    // It can only travel the total width MINUS its own diameter.
+    int16_t pixelRange = sl->size.width - (dynamicKnobRadius * 2);
+    int16_t valueRange = sl->maxValue - sl->minValue;
+
+    // Calculate where the center of the knob should be
+    int16_t activeOffset = ((sl->currentValue - sl->minValue) * pixelRange) / valueRange;
+    int16_t knobCenterX = sl->pos.x + 1.5 * dynamicKnobRadius + 2 + activeOffset;
+
+    // =========================================================
+    // DRAWING PIPELINE
+    // =========================================================
+    // 1. Draw Background Track (Spans the ENTIRE widget width)
+    gfx_fillRoundRect(pBuf, 
+                      sl->pos.x, trackY, 
+                      sl->size.width, sl->size.height, 
+                      sl->trackHeight / 2, trackBgColor);
+
+    // 2. Draw Active Track (From left edge up to the knob's center)
+    int16_t activeTrackWidth = knobCenterX - sl->pos.x;
+    if (sl->currentValue != 0) {
+        gfx_fillRoundRect(pBuf, 
+                          sl->pos.x, trackY, 
+                          activeTrackWidth, sl->size.height, 
+                          sl->trackHeight / 2, trackActiveColor);
+    }
+
+    // 3. Draw the Knob
+    int16_t knobCenterY = sl->pos.y + (sl->size.height / 2);
+    gfx_fillCircle(pBuf, knobCenterX, knobCenterY, dynamicKnobRadius, knobColor);
+
+    // Clear flag
+    sl->bIsDirty = false;
+} */
+
+/*
+void gfx_drawSlider(pixel16_t *pBuf, gfx_Slider *sl) {
+    if (!pBuf || !sl || !g_pCurrentTheme) return;
+
+    // 1. Resolver colores base del tema
+    uint16_t trackBgColorTop = g_pCurrentTheme->palette.secondary;      
+    uint16_t trackBgColorBot = DARKEN_COLOR(trackBgColorTop); // Efecto hundido
+
+    uint16_t trackActiveColorTop = g_pCurrentTheme->palette.success;  
+    uint16_t trackActiveColorBot = DARKEN_COLOR(trackActiveColorTop); // Efecto 3D / Gel
+
+    uint16_t knobColorTop = g_pCurrentTheme->palette.primary;         
+    uint16_t knobColorBot = DARKEN_COLOR(knobColorTop);
+
+    // 2. Proteger límites matemáticos
+    if (sl->currentValue < sl->minValue) sl->currentValue = sl->minValue;
+    if (sl->currentValue > sl->maxValue) sl->currentValue = sl->maxValue;
+
+    // 3. Geometría Dinámica (con tu factor 1.15)
+    uint16_t dynamicKnobRadius = sl->size.height * 1.25;
+    sl->knobRadius = dynamicKnobRadius;
+
+    int16_t trackY = sl->pos.y; 
+
+ 	int16_t pixelRange = 0;
+	if(sl->bShowKnob)
+    	pixelRange = sl->size.width - (1.5 * dynamicKnobRadius);
+	else 
+    	pixelRange = sl->size.width - (dynamicKnobRadius);
+
+    int16_t valueRange = sl->maxValue - sl->minValue;
+    if (valueRange == 0) valueRange = 1;
+
+    int16_t activeOffset = ((sl->currentValue - sl->minValue) * pixelRange) / valueRange;
+    int16_t knobCenterX = sl->pos.x + 1.0 * dynamicKnobRadius + activeOffset;
+
+	if(sl->currentValue == 0) {
+		if(sl->bShowKnob)
+			knobCenterX = sl->pos.x + 0.5 * dynamicKnobRadius;
+	}
+    // =========================================================
+    // DIBUJADO CON GRADIENTES
+    // =========================================================
+    
+    // 1. Track de Fondo (Gradiente invertido opcional para dar efecto de "canaleta hundida")
+    // Si prefieres que resalte, usa BgColorTop primero, si prefieres hundido, inviértelos.
+    gfx_fillGradientRoundRect(pBuf, 
+                              sl->pos.x, trackY, 
+                              sl->size.width, sl->size.height, 
+                              sl->size.height, 
+                              trackBgColorBot, trackBgColorTop); // Invertido para efecto cóncavo
+
+    // 2. Track Activo (Color principal con gradiente tipo "Cilindro" o "Gel")
+    int16_t activeTrackWidth = knobCenterX - sl->pos.x;
+	if(sl->currentValue == 0 && !sl->bShowKnob)
+		activeTrackWidth = knobCenterX - sl->pos.x;
+	
+    if (sl->currentValue >= sl->minValue) { 
+        gfx_fillGradientRoundRect(pBuf, 
+                                  sl->pos.x, trackY, 
+                                  activeTrackWidth, sl->size.height, 
+                                  sl->size.height, 
+                                  trackActiveColorTop, trackActiveColorBot);
+    }
+
+    // 3. Dibujar la Perilla (Knob)
+	if(sl->bShowKnob) {
+    	int16_t knobCenterY = sl->pos.y + (sl->size.height / 2);
+    
+    	// Como no tenemos gfx_fillGradientCircle, podemos simular un gradiente radial / bisel
+    	// dibujando un círculo base oscuro y uno interior más claro y ligeramente desplazado.
+    	gfx_fillCircle(pBuf, knobCenterX, knobCenterY, dynamicKnobRadius / 2, trackBgColorBot); // Borde/Sombra
+    	gfx_fillCircle(pBuf, knobCenterX, knobCenterY, dynamicKnobRadius / 2 - 2, knobColorTop); // Brillo principal
+	}
+
+    // Limpiar bandera
+    sl->bIsDirty = false;
+} */
+
+void gfx_drawSlider(pixel16_t *pBuf, gfx_Slider *sl) {
+    if (!pBuf || !sl || !g_pCurrentTheme) return;
+
+    // 1. Resolver colores base del tema
+    uint16_t trackBgColorTop = g_pCurrentTheme->palette.secondary;      
+    uint16_t trackBgColorBot = DARKEN_COLOR(trackBgColorTop); 
+
+    uint16_t trackActiveColorTop = g_pCurrentTheme->palette.success;  
+    uint16_t trackActiveColorBot = DARKEN_COLOR(trackActiveColorTop); 
+
+    uint16_t knobColorTop = g_pCurrentTheme->palette.primary;         
+    uint16_t knobColorBot = DARKEN_COLOR(knobColorTop);
+
+    // 2. Proteger límites matemáticos
+    if (sl->currentValue < sl->minValue) sl->currentValue = sl->minValue;
+    if (sl->currentValue > sl->maxValue) sl->currentValue = sl->maxValue;
+
+    // 3. Abstracción de Orientación (Horizontal vs Vertical)
+    uint16_t thickness = sl->bIsVertical ? sl->size.width : sl->size.height;
+    uint16_t length    = sl->bIsVertical ? sl->size.height : sl->size.width;
+
+    // Geometría Dinámica
+    uint16_t dynamicKnobRadius = thickness * 1.25;
+    sl->knobRadius = dynamicKnobRadius;
+
+    int16_t pixelRange = sl->bShowKnob ? length - (1.5 * dynamicKnobRadius) : length - dynamicKnobRadius;
+    int16_t valueRange = sl->maxValue - sl->minValue;
+    if (valueRange == 0) valueRange = 1;
+
+    int16_t activeOffset = ((sl->currentValue - sl->minValue) * pixelRange) / valueRange;
+
+    // Variables finales de renderizado
+    int16_t knobCenterX, knobCenterY;
+    int16_t activeTrackX, activeTrackY, activeTrackW, activeTrackH;
+
+    if (sl->bIsVertical) {
+        // --- LOGICA VERTICAL ---
+        knobCenterX = sl->pos.x + (thickness / 2);
+        // Empieza en la parte inferior (pos.y + length) y sube (- activeOffset)
+        knobCenterY = (sl->pos.y + length) - (1.0 * dynamicKnobRadius) - activeOffset;
+
+        if (sl->currentValue == 0 && sl->bShowKnob) {
+            knobCenterY = (sl->pos.y + length) - (0.5 * dynamicKnobRadius);
+        }
+
+        activeTrackX = sl->pos.x;
+        activeTrackY = knobCenterY; // Dibuja desde el knob hacia abajo
+        activeTrackW = thickness;
+        activeTrackH = (sl->pos.y + length) - knobCenterY;
+        
+    } else {
+        // --- LOGICA HORIZONTAL ---
+        knobCenterX = sl->pos.x + (1.0 * dynamicKnobRadius) + activeOffset;
+        knobCenterY = sl->pos.y + (thickness / 2);
+
+        if (sl->currentValue == 0 && sl->bShowKnob) {
+            knobCenterX = sl->pos.x + (0.5 * dynamicKnobRadius);
+        }
+
+        activeTrackX = sl->pos.x;
+        activeTrackY = sl->pos.y;
+        activeTrackW = knobCenterX - sl->pos.x;
+        activeTrackH = thickness;
+    }
+
+    // =========================================================
+    // DIBUJADO CON GRADIENTES
+    // =========================================================
+    
+    // 1. Track de Fondo
+    gfx_fillGradientRoundRect(pBuf, 
+                              sl->pos.x, sl->pos.y, 
+                              sl->size.width, sl->size.height, 
+                              thickness, 
+                              trackBgColorBot, trackBgColorTop); 
+
+    // 2. Track Activo
+    if (sl->currentValue > sl->minValue || (sl->currentValue == 0 && !sl->bShowKnob)) { 
+        gfx_fillGradientRoundRect(pBuf, 
+                                  activeTrackX, activeTrackY, 
+                                  activeTrackW, activeTrackH, 
+                                  thickness, 
+                                  trackActiveColorTop, trackActiveColorBot);
+    }
+
+    // 3. Dibujar la Perilla (Knob)
+    if(sl->bShowKnob) {
+        gfx_fillCircle(pBuf, knobCenterX, knobCenterY, dynamicKnobRadius / 2, trackBgColorBot);
+        gfx_fillCircle(pBuf, knobCenterX, knobCenterY, (dynamicKnobRadius / 2) - 2, knobColorTop);
+    }
+
+    // Limpiar bandera
+    sl->bIsDirty = false;
+}
+
+bool gfx_processSliderTouch(gfx_Slider *sl, TouchStatus touch) {
+    if (gfx_touchObject(sl->regTouch, touch)) {
+        
+        uint16_t thickness = sl->bIsVertical ? sl->size.width : sl->size.height;
+        uint16_t dynamicKnobRadius = thickness * 1.25;
+        if (dynamicKnobRadius < 2) dynamicKnobRadius = 2;
+
+        int16_t minLimit, maxLimit, touchAxis;
+        int16_t newValue = 0;
+
+        if (sl->bIsVertical) {
+            // Evaluamos el eje Y (invertido, porque Y=0 es la parte superior)
+            minLimit = sl->pos.y + dynamicKnobRadius;
+            maxLimit = sl->pos.y + sl->size.height - dynamicKnobRadius;
+            touchAxis = touch.y;
+            
+            if (touchAxis < minLimit) touchAxis = minLimit;
+            if (touchAxis > maxLimit) touchAxis = maxLimit;
+            
+            int16_t pixelRange = maxLimit - minLimit;
+            int16_t valueRange = sl->maxValue - sl->minValue;
+            
+            // Invertimos la matemática: Tocar arriba = MaxValue
+            newValue = sl->maxValue - (((touchAxis - minLimit) * valueRange) / pixelRange);
+            
+        } else {
+            // Evaluamos el eje X (como lo tenías antes)
+            minLimit = sl->pos.x + dynamicKnobRadius;
+            maxLimit = sl->pos.x + sl->size.width - dynamicKnobRadius;
+            touchAxis = touch.x;
+            
+            if (touchAxis < minLimit) touchAxis = minLimit;
+            if (touchAxis > maxLimit) touchAxis = maxLimit;
+            
+            int16_t pixelRange = maxLimit - minLimit;
+            int16_t valueRange = sl->maxValue - sl->minValue;
+            
+            newValue = sl->minValue + (((touchAxis - minLimit) * valueRange) / pixelRange);
+        }
+
+        if (newValue != sl->currentValue) {
+            sl->currentValue = newValue;
+            sl->bIsDirty = true;
+            if (sl->onValueChanged != NULL) {
+                sl->onValueChanged(sl, sl->currentValue);
+            }
+            return true; 
+        }
+    }
+    return false;
+}
+
+/*
+bool gfx_processSliderTouch(gfx_Slider *sl, TouchStatus touch) {
+    // Verificar si el toque ocurrió dentro de la RegionTouchObject del slider
+        
+        // Determinar límites físicos de arrastre
+        int16_t minX = sl->pos.x + sl->knobRadius;
+        int16_t maxX = sl->pos.x + sl->size.width - sl->knobRadius;
+        int16_t touchX = touch.x;
+
+        // Restringir el toque a los bordes
+        if (touchX < minX) touchX = minX;
+        if (touchX > maxX) touchX = maxX;
+
+        // Calcular nuevo valor
+        int16_t pixelRange = maxX - minX;
+        int16_t valueRange = sl->maxValue - sl->minValue;
+        
+        int16_t newValue = sl->minValue + (((touchX - minX) * valueRange) / pixelRange);
+
+		TIVA_LOGI(TASK_NAME, "Slider new value: %u", newValue);
+
+        sl->bIsDirty = true;
+
+        // Si el valor cambió, actualizar y disparar callback
+        if (newValue != sl->currentValue) {
+            sl->currentValue = newValue;
+
+            
+            if (sl->onValueChanged != NULL) {
+                sl->onValueChanged(sl, sl->currentValue);
+            }
+            return true; // El evento fue consumido
+        }
+	return false;
+}*/
+/*
+void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph) {
+    if (!pBuf || !graph) return;
+
+    // 1. Dibujar fondo de la gráfica con el color personalizado
+    gfx_fillRoundRect(pBuf, graph->pos.x, graph->pos.y, 
+                      graph->size.width, graph->size.height, 4, graph->bgColor);
+
+    // =========================================================
+    // 2. Dibujar Cuadrícula (Uso de funciones FAST optimizadas)
+    // =========================================================
+    
+    // Líneas Horizontales (Eje Y)
+    if (graph->gridLinesY > 0) {
+        int16_t stepY = graph->size.height / (graph->gridLinesY + 1);
+		int i = 1;
+        for (; i <= graph->gridLinesY; i++) {
+            int16_t gy = graph->pos.y + (i * stepY);
+            gfx_drawFastHLine(pBuf, graph->pos.x, gy, graph->size.width, graph->gridColor);
+        }
+    }
+    
+    // Líneas Verticales (Eje X)
+    if (graph->gridLinesX > 0) {
+        int16_t stepX = graph->size.width / (graph->gridLinesX + 1);
+		int i = 1;
+        for (; i <= graph->gridLinesX; i++) {
+            int16_t gx = graph->pos.x + (i * stepX);
+            gfx_drawFastVLine(pBuf, gx, graph->pos.y, graph->size.height, graph->gridColor);
+        }
+    }
+
+	// =========================================================
+    // 3. Trazar los Datos (Grosor y Color Dinámicos)
+    // =========================================================
+    if (graph->data != NULL && graph->maxPoints > 1) {
+        int16_t rangeY = graph->maxY - graph->minY;
+        if (rangeY <= 0) rangeY = 1; // Prevenir división por cero
+
+        int16_t prevX = -1, prevY = -1;
+
+        // Calculamos el offset para centrar el grosor de la línea
+        int8_t widthOffset = -(graph->lineWidth / 2);
+
+		uint16_t i = 0;
+        for (; i < graph->maxPoints; i++) {
+            uint16_t dataIdx = (graph->head + i) % graph->maxPoints;
+            int16_t val = graph->data[dataIdx];
+
+            // Clamping 
+            if (val < graph->minY) val = graph->minY;
+            if (val > graph->maxY) val = graph->maxY;
+
+            // EL FIX: Forzar la matemática a 32 bits para evitar desbordamiento
+            int16_t px = graph->pos.x + (int16_t)(((int32_t)i * graph->size.width) / (graph->maxPoints - 1));
+            int16_t py = graph->pos.y + graph->size.height - (int16_t)(((int32_t)(val - graph->minY) * graph->size.height) / rangeY);
+
+            // Conectar con el punto anterior
+            if (prevX != -1) {
+                // Loop para engrosar la línea iterando sobre el eje Y
+				uint8_t w = 0;
+                for (; w < graph->lineWidth; w++) {
+                    int8_t currentOffset = widthOffset + w;
+                    
+                    int16_t adjPrevY = prevY + currentOffset;
+                    int16_t adjPy = py + currentOffset;
+                    
+                    gfx_writeLine(pBuf, prevX, adjPrevY, px, adjPy, graph->lineColor);
+                }
+            }
+            prevX = px;
+            prevY = py;
+        }
+    }
+
+    graph->bIsDirty = false;
+} */
+
+void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph) {
+    if (!pBuf || !graph) return;
+
+    // 1. Dibujar fondo de la gráfica
+    gfx_fillRoundRect(pBuf, graph->pos.x, graph->pos.y, 
+                      graph->size.width, graph->size.height, 4, graph->bgColor);
+
+	// =========================================================
+    // 2. Dibujar Cuadrícula y Etiquetas (Y-Axis)
+    // =========================================================
+    
+    int8_t fontId = -1;
+    uint16_t textW = 0, textH = 0;
+    
+    if (graph->bShowLabels) {
+        fontId = gfx_ResolveFontId(graph->typo); // Using the helper we made earlier!
+        if (fontId >= 0) {
+            // Get the height of a standard number to center it vertically
+            gfx_GetStringDimensions("0", fontId, &textW, &textH, 1); 
+        }
+    }
+
+    // Líneas Horizontales (Eje Y) y Textos
+    int16_t stepY = graph->size.height / (graph->gridLinesY + 1);
+    int16_t valueStep = (graph->maxY - graph->minY) / (graph->gridLinesY + 1);
+
+    // Iteramos desde 0 hasta gridLinesY + 1 para incluir el techo (Max) y el piso (Min)
+	int i = 0;
+    for (; i <= (graph->gridLinesY + 1); i++) {
+        
+        int16_t gy = graph->pos.y + (i * stepY);
+        int16_t gridValue = graph->maxY - (i * valueStep); // Y is inverted, so top is Max
+
+        // 1. Draw the Grid Line (Skip i=0 and the last i, as they are the borders of the widget)
+        if (i > 0 && i < (graph->gridLinesY + 1)) {
+            gfx_drawFastHLine(pBuf, graph->pos.x, gy, graph->size.width, graph->gridColor);
+        }
+
+        // 2. Draw the Numeric Label
+        if (graph->bShowLabels && fontId >= 0) {
+            char valStr[12];
+            snprintf(valStr, sizeof(valStr), "%d", gridValue); // Format integer to string
+            
+            // Draw 4 pixels from the left edge, centered vertically on the grid line
+            int16_t textX = graph->pos.x + 4;
+            int16_t textY = gy - (textH / 2);
+            
+            // Prevent the top and bottom text from bleeding outside the graph limits
+            if (i == 0) textY = graph->pos.y + 2; 
+            if (i == (graph->gridLinesY + 1)) textY = graph->pos.y + graph->size.height - textH / 2;
+
+            // !! IMPORTANT !!
+            // Replace 'gfx_DrawString' with whatever your primitive text drawing function 
+            // is called in your engine (the one that writes directly to pBuf).
+            // gfx_DrawString(pBuf, valStr, textX, textY, fontId, graph->textColor);
+            gfx_DrawString(pBuf, fontId, textX, textY, valStr, graph->textColor, ALIGN_CENTER, 1);
+        }
+    }
+
+    // =========================================================
+    // 2. Dibujar Cuadrícula
+    // =========================================================
+    if (graph->gridLinesY > 0) {
+        int16_t stepY = graph->size.height / (graph->gridLinesY + 1);
+		int i = 1;
+        for (; i <= graph->gridLinesY; i++) {
+            int16_t gy = graph->pos.y + (i * stepY);
+            gfx_drawFastHLine(pBuf, graph->pos.x, gy, graph->size.width, graph->gridColor);
+        }
+    }
+    
+    if (graph->gridLinesX > 0) {
+        int16_t stepX = graph->size.width / (graph->gridLinesX + 1);
+		int i = 1;
+        for (; i <= graph->gridLinesX; i++) {
+            int16_t gx = graph->pos.x + (i * stepX);
+            gfx_drawFastVLine(pBuf, gx, graph->pos.y, graph->size.height, graph->gridColor);
+        }
+    }
+
+    // =========================================================
+    // 3. Trazar los Datos (Grosor Inteligente)
+    // =========================================================
+    if (graph->data != NULL && graph->maxPoints > 1) {
+        int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
+		if (rangeY <= 0) rangeY = 1;
+
+        int16_t prevX = -1, prevY = -1;
+        int8_t widthOffset = -(graph->lineWidth / 2);
+		uint16_t i = 0;
+        for (; i < graph->maxPoints; i++) {
+            uint16_t dataIdx = (graph->head + i) % graph->maxPoints;
+            int16_t val = graph->data[dataIdx];
+
+            // Clamping 
+            if (val < graph->minY) val = graph->minY;
+            if (val > graph->maxY) val = graph->maxY;
+
+            // Interpolación matemática forzada a 32-bits para evitar corrupción en el fondo
+            // int16_t px = graph->pos.x + (int16_t)(((int32_t)i * graph->size.width) / (graph->maxPoints - 1));
+            // int16_t py = graph->pos.y + graph->size.height - (int16_t)(((int32_t)(val - graph->minY) * graph->size.height) / rangeY);
+			int16_t px = (int16_t)(
+			    (int32_t)graph->pos.x + 
+			    ((int32_t)i * (int32_t)(graph->size.width - 1)) / 
+			    (int32_t)(graph->maxPoints - 1)
+			);
+			
+			int16_t py = (int16_t)(
+			    (int32_t)graph->pos.y + (int32_t)(graph->size.height - 1) -
+			    (((int32_t)(val - graph->minY) * (int32_t)(graph->size.height - 1)) / rangeY)
+			);
+            // Conectar con el punto anterior
+            if (prevX != -1) {
+                
+                // EL FIX: Calcular si la línea es más vertical que horizontal
+                bool isSteep = abs(py - prevY) > abs(px - prevX);
+                uint8_t w = 0;
+                for (; w < graph->lineWidth; w++) {
+                    int8_t currentOffset = widthOffset + w;
+                    
+                    if (isSteep) {
+                        // Si la caída es vertical, desplazamos la línea hacia los LADOS (Eje X)
+                        gfx_writeLine(pBuf, prevX + currentOffset, prevY, px + currentOffset, py, graph->lineColor);
+                    } else {
+                        // Si la línea es horizontal, la desplazamos hacia ARRIBA/ABAJO (Eje Y)
+                        gfx_writeLine(pBuf, prevX, prevY + currentOffset, px, py + currentOffset, graph->lineColor);
+                    }
+                }
+            }
+            prevX = px;
+            prevY = py;
+        }
+    }
+
+    graph->bIsDirty = false;
+}
+
+void gfx_GraphAddPoint(gfx_Graph *graph, int16_t newValue) {
+    if(!graph || !graph->data) return;
+
+    // Sobrescribimos el dato más viejo en la posición 'head'
+    graph->data[graph->head] = newValue;
+
+    // Avanzamos el 'head' circularmente
+    graph->head = (graph->head + 1) % graph->maxPoints;
+
+    // Le avisamos al motor que debe redibujar la gráfica en el próximo frame
+    graph->bIsDirty = true;
 }

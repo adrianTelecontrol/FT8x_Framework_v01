@@ -12,10 +12,13 @@
 #include "helpers.h"
 #include "gfx_theme.h"
 #include "event_engine.h"
+#include "navigation_widgets.h"
 
 #include "home_form.h"
 
 static gfx_Canvas g_sHomeCanvas;
+
+int16_t g_i16HomeFormID = 0;
 
 // 1. The Generic Nodes
 gfx_GenericWidget panelWidget;
@@ -25,6 +28,10 @@ gfx_GenericWidget thirdWidget;
 gfx_GenericWidget changeThemeButton;
 gfx_GenericWidget counterLabel;
 gfx_GenericWidget counterLabel2; 
+gfx_GenericWidget sliderWidget;
+gfx_GenericWidget sliderValueWidget;
+gfx_GenericWidget vertSliderWidget;
+gfx_GenericWidget vertSliderValueWidget;
 
 // 2. NEW: The Persistent Memory for the actual widget data
 gfx_Rectangle panelData;
@@ -34,9 +41,16 @@ gfx_Button themeBtnData;
 gfx_Label titleData;
 gfx_Label counterData;
 gfx_Label counterData2;
+gfx_Slider sliderData;
+gfx_Label sliderValueData;
+gfx_Slider vertSliderData;
+gfx_Label vertSliderValueData;
 
 // 3. NEW: The static text buffer to replace malloc
 static char counterTextBuffer[16];
+static char counter2TextBuffer[16];
+static char sliderValTextBuffer[16];
+static char vertSliderValTextBuffer[16];
 
 // --- Callbacks ---
 
@@ -46,6 +60,26 @@ static void onCounterUpdated(int32_t arg) // Using int32_t assuming your Event p
     
     // Safely format the dynamic argument into the persistent static buffer
     sprintf(lb->text, "%u", arg); 
+    
+    lb->bIsDirty = true;
+} 
+
+static void onSliderValueUpdated(gfx_Slider *sld, int16_t arg) // Using int32_t assuming your Event payload is int32_t
+{
+    gfx_Label *lb = (gfx_Label *)sliderValueWidget.pvWidget;
+    
+    // Safely format the dynamic argument into the persistent static buffer
+    sprintf(lb->text, "Slider: %u", arg); 
+    
+    lb->bIsDirty = true;
+} 
+
+static void onVertSliderValueUpdated(gfx_Slider *sld, int16_t arg) // Using int32_t assuming your Event payload is int32_t
+{
+    gfx_Label *lb = (gfx_Label *)vertSliderValueWidget.pvWidget;
+    
+    // Safely format the dynamic argument into the persistent static buffer
+    sprintf(lb->text, "VertSlider: %u", arg); 
     
     lb->bIsDirty = true;
 } 
@@ -93,6 +127,7 @@ void pushButtonOnPosChanged(gfx_Button *btn, Position newPos)
     }
 }
 
+
 // --- Initialization ---
 
 void initHomeForm(void)
@@ -123,7 +158,7 @@ void initHomeForm(void)
         .size.width = 100,
         .typo = TYPO_BODY,         
         .style = STYLE_PRIMARY,    
-        .pos.x = LCD_WIDTH / 2 - BUTTON_WIDTH / 2,
+        .pos.x = 200,
         .pos.y = LCD_HEIGHT / 2 - BUTTON_HEIGHT / 2,
         .oldPos.x = LCD_WIDTH / 2 - BUTTON_WIDTH / 2,
         .oldPos.y = LCD_HEIGHT / 2 - BUTTON_HEIGHT / 2,
@@ -170,7 +205,7 @@ void initHomeForm(void)
         .typo = TYPO_BODY,         
         .style = STYLE_SUCCESS,  
         .pos.x = LCD_WIDTH / 2 - 50,
-        .pos.y = LCD_HEIGHT - 150,
+        .pos.y = LCD_HEIGHT - 300,
         .oldPos.x = LCD_WIDTH / 2 - 50,
         .oldPos.y = LCD_HEIGHT - 150,
         .borderWidth = 1,
@@ -216,7 +251,7 @@ void initHomeForm(void)
     counterLabel.pvWidget = (void *)&counterData;
 
     counterData2 = (gfx_Label){
-        .text = counterTextBuffer, // Point directly to our static array
+        .text = counter2TextBuffer, // Point directly to our static array
 		.name = "contador2",
         .pos.x = LCD_WIDTH * 1.0 / 3.0,
         .pos.y = 100,
@@ -229,10 +264,80 @@ void initHomeForm(void)
 	
     counterLabel2.eWidgetType = WD_TYPE_LABEL;
     counterLabel2.pvWidget = (void *)&counterData2;
-    
+
+	sliderData = (gfx_Slider){
+		.knobRadius = 25,
+		.maxValue = 100,
+		.minValue = 0,
+		.name = "slider1",
+		.size.height = 30,
+		.size.width = 500,
+		.pos.x = LCD_WIDTH / 2 - 250,
+		.pos.y = LCD_HEIGHT - 50,
+		.trackHeight = 50,
+		.style = STYLE_PRIMARY,
+		.onValueChanged = onSliderValueUpdated,
+		.bIsVertical = false,
+		.bShowKnob = false,
+		.currentValue = 0,
+	};
+	sliderWidget.eWidgetType = WD_TYPE_SLIDER;
+	sliderWidget.pvWidget = (void *)&sliderData;
+	gfx_initRegTouch(sliderWidget.pvWidget, WD_TYPE_SLIDER);
+
+    sliderValueData = (gfx_Label) {
+        .text = sliderValTextBuffer, // Point directly to our static array
+		.name = "sliderValue",
+		.pos.x = LCD_WIDTH / 2 - 250,
+		.pos.y = LCD_HEIGHT - 100,
+        .oldPos.x = LCD_WIDTH / 2,
+        .oldPos.y = 90,
+        .alignment = ALIGN_CENTER,
+        .typo = TYPO_H2,           
+        .style = STYLE_SECONDARY,    
+    };
+	sprintf(sliderValTextBuffer, "Slider: %u", 0);
+    sliderValueWidget.eWidgetType = WD_TYPE_LABEL;
+    sliderValueWidget.pvWidget = (void *)&sliderValueData;
+
+	vertSliderData = (gfx_Slider){
+		.knobRadius = 25,
+		.maxValue = 100,
+		.minValue = 0,
+		.name = "slider1",
+		.size.height = 300,
+		.size.width = 30,
+		.pos.x = LCD_WIDTH - 70,
+		.pos.y = LCD_HEIGHT * 1.0 / 3.0,
+		.trackHeight = 50,
+		.style = STYLE_SECONDARY,
+		.onValueChanged = onVertSliderValueUpdated,
+		.bIsVertical = true,
+		.bShowKnob = false,
+		.currentValue = 0,
+	};
+	vertSliderWidget.eWidgetType = WD_TYPE_SLIDER;
+	vertSliderWidget.pvWidget = (void *)&vertSliderData;
+	gfx_initRegTouch(vertSliderWidget.pvWidget, WD_TYPE_SLIDER);
+
+    vertSliderValueData = (gfx_Label) {
+        .text = vertSliderValTextBuffer, // Point directly to our static array
+		.name = "vertSliderValue",
+		.pos.x = LCD_WIDTH - 70,
+		.pos.y = 100,
+        .oldPos.x = LCD_WIDTH / 2,
+        .oldPos.y = 90,
+        .alignment = ALIGN_CENTER,
+        .typo = TYPO_CAPTION,           
+        .style = STYLE_SECONDARY,    
+    };
+	sprintf(vertSliderValTextBuffer, "VertSlider: %u", 0);
+    vertSliderValueWidget.eWidgetType = WD_TYPE_LABEL;
+    vertSliderValueWidget.pvWidget = (void *)&vertSliderValueData;
+	
     // Subscribe to events
-    Event_Subscribe(EVT_SYS_COUNTER_CHANGED, onCounterUpdated);
-    Event_Subscribe(EVT_SYS_COUNTER2_CHANGED, onCounter2Updated);
+    Event_Subscribe(EVT_SYS_COUNTER_CHANGED, (EventHandler_fn)onCounterUpdated);
+    Event_Subscribe(EVT_SYS_COUNTER2_CHANGED, (EventHandler_fn)onCounter2Updated);
 
     // Initial render setup
     memset(counterTextBuffer, 0, sizeof(counterTextBuffer));
@@ -244,9 +349,16 @@ void initHomeForm(void)
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &counterLabel);
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &counterLabel2);
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &thirdWidget);
+	canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &sliderWidget);
+	canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &vertSliderWidget);
+	canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &sliderValueWidget);
+	canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &vertSliderValueWidget);
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &changeThemeButton);
+	useNavigationButtons(&g_sHomeCanvas);
+	
+	//canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &btnPrevFormContainer);
 
     // Add reference to formManager
-    formManagerLoadForm(&g_sHomeCanvas);
+    g_i16HomeFormID = formManagerAddForm(&g_sHomeCanvas);
 }
 

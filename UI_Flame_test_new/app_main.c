@@ -342,19 +342,19 @@ int main(void) {
   TIVA_LOGI(TASK_NAME, "Clearing the screen to 0x%x color", EVE_PINK);
   EVE_MemWrite8(REG_PWM_DUTY, 128);
   EVE_MemWrite8(REG_CSPREAD, 0);
-  // gfx_start(EVE_PINK);
-  // gfx_end();
-
-  //initializeSquaresPhysics(); // Initialize squares
+  gfx_start(0xFF52EE);
+  gfx_end();
 
   //EVE_PlayIntroVideo();
   gfx_calibrate();
 
   StartCycleCounter(); // The DWT will be our clock source
 
+
   Theme_Init();
   Theme_SetMode(0);
-  initHomeForm();
+
+  formManagerInit();
 
   // Test Unit
   controlSimulatorInit();
@@ -362,8 +362,6 @@ int main(void) {
   // Send initial full frame
   formManagerComposite(g_pDrawingBuffer);
 
-  //HAL_SPI_SingleMode();
-  //SysCtlDelay(MS_2_CLK(100));
   Gfx_render();
 
   gestureEngineInit();

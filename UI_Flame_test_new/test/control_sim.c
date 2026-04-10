@@ -21,7 +21,7 @@ void controlSimulatorInit(void)
 	// Initialize variables
 	g_ui32SecCounter = 2;
 	g_ui32Counter2 = 0;
-	
+	srand(GetExecTimeMs());
 }
 
 void controlSimulatiorTask(void) {
@@ -48,6 +48,18 @@ void controlSimulatiorTask(void) {
 			SysCtlDelay(MS_2_CLK(100));
 		}
 	}	
+
+	if(g_currExecTime % 700 == 0)
+	{
+		uint32_t val = rand() % 10;
+		
+		bool ret = Event_Post(EVT_SYS_NEW_GRAPH_VALUE, val);
+		while(!ret)
+		{
+			SysCtlDelay(MS_2_CLK(100));
+		}
+
+	}
 
 }
 

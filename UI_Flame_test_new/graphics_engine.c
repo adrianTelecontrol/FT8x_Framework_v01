@@ -12,7 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 #include <driverlib/interrupt.h>
 #include <driverlib/rom_map.h>
 #include <driverlib/sysctl.h>
@@ -31,7 +30,6 @@
 #include "graphics_engine.h"
 #include "hal_spi.h"
 #include "helpers.h"
-
 
 // --- CONFIGURATION ---
 #define GFX_WIDTH 800
@@ -340,7 +338,8 @@ bool Gfx_BuildSg_For_Segments(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
   const uint16_t MAX_DMA_TRANSFER = 1024;
   // const uint16_t MAX_DMA_TRANSFER = 600;
 
-  TIVA_LOGI(TASK_NAME, "Segments to build: (%u, %u) -> [%u, %u]", x, y, w, h);
+  // TIVA_LOGI(TASK_NAME, "Segments to build: (%u, %u) -> [%u, %u]", x, y, w,
+  // h);
   int row = 0;
   for (; row < h; row++) {
     uint32_t screenOffset = ((y + row) * 800) + x;
@@ -388,7 +387,7 @@ int16_t w, int16_t h) {
 
     uint16_t bytesPerRow = w * 2;
 
-	int row = 0;
+        int row = 0;
     for (; row < h; row++) {
         if (g_DMAQueue.count >= MAX_DMA_JOBS) return false;
 
@@ -613,14 +612,15 @@ void Gfx_render(void) {
   while (g_bSPI_TransferActive)
     ;
 
-  //DisplayBitmap();
+  // DisplayBitmap();
 
   Gfx_BuildSG_For_Buffer((uint8_t *)g_pDrawingBuffer);
 
   HAL_SPI_CS_Enable();
   EVE_AddrForWr(RAM_G);
 
-  while(MAP_SSIBusy(SSI3_BASE));
+  while (MAP_SSIBusy(SSI3_BASE))
+    ;
 
   Gfx_Start_SG_Transfer();
   // g_ui32StartTxCycles = DWTGetCycleCounter();
@@ -690,34 +690,38 @@ bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
     return false;
 
   switch (widget->eWidgetType) {
+
   case WD_TYPE_BUTTON: {
     gfx_Button *btn = (gfx_Button *)widget->pvWidget;
 
-    // 1. Calcular el desbordamiento del texto (Alpha-Blending Trap Fix)
-    int16_t textWidth = 0;
-    if (btn->label != NULL) {
-      // NOTA: Ajusta el '10' por el ancho promedio en píxeles de tu fuente,
-      // o usa la función de tu librería para medir el string si la tienes.
-      textWidth = strlen(btn->label) * 10;
+    // 1. Obtener dimensiones dinámicas del texto
+    uint16_t textWidth = 0;
+    uint16_t textHeight = 0;
+    int8_t fontId = gfx_ResolveFontId(btn->typo);
+
+    if (btn->label != NULL && fontId >= 0) {
+      gfx_GetStringDimensions(btn->label, fontId, &textWidth, &textHeight, 1);
     }
 
+    // 2. Calcular el desbordamiento (Alpha-Blending Trap Fix)
     int16_t overflowX = 0;
     if (textWidth > btn->size.width) {
       overflowX = (textWidth - btn->size.width) / 2;
-      overflowX += 4; // Padding extra para el anti-aliasing de la fuente
+      overflowX += 4; // Padding extra para el anti-aliasing
     }
 
-    // 2. Calcular la huella total (Footprint + Overflow + Cinematic Offset)
+    // 3. Calcular la huella total (Footprint + Overflow + Cinematic Offset)
     *x = btn->pos.x - overflowX - btn->borderWidth;
     *y = btn->pos.y - btn->borderWidth;
 
-    // Sumamos 2 píxeles extra a W y H para acomodar el desplazamiento
-    // cuando el botón pasa a estado BTN_STATE_PRESSED.
+    // Sumamos 2 píxeles extra a W y H para acomodar la animación de
+    // "Presionado"
     *w = btn->size.width + (overflowX * 2) + (btn->borderWidth * 2) + 2;
     *h = btn->size.height + (btn->borderWidth * 2) + 2;
 
     return true;
   }
+
   case WD_TYPE_RECT: {
     gfx_Rectangle *rect = (gfx_Rectangle *)widget->pvWidget;
     *x = rect->pos.x;
@@ -726,15 +730,72 @@ bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
     *h = rect->dim.height;
     return true;
   }
+
   case WD_TYPE_LABEL: {
-    gfx_Label *lbl = (gfx_Label *)widget->pvWidget;
-    *x = lbl->pos.x;
-    *y = lbl->pos.y;
-    // Reemplaza con la métrica real de tu fuente
-    *w = 100;
-    *h = 20;
+    gfx_Label *lb = (gfx_Label *)widget->pvWidget;
+
+    // 1. Obtener dimensiones dinámicas del texto
+    uint16_t textW = 0, textH = 0;
+    int8_t fontId = gfx_ResolveFontId(lb->typo);
+
+    if (lb->text != NULL && fontId >= 0) {
+      gfx_GetStringDimensions(lb->text, fontId, &textW, &textH, 1);
+    }
+
+    // 2. Ajustar la posición (X, Y) basándonos en la alineación del texto
+    int16_t wipeX = lb->pos.x;
+    int16_t wipeY = lb->pos.y;
+
+    if (lb->alignment & ALIGN_HCENTER) {
+      wipeX = lb->pos.x - (textW / 2);
+    } else if (lb->alignment & ALIGN_RIGHT) {
+      wipeX = lb->pos.x - textW;
+    }
+
+    if (lb->alignment & ALIGN_VCENTER) {
+      wipeY = lb->pos.y - (textH / 2);
+    } else if (lb->alignment & ALIGN_BOTTOM) {
+      wipeY = lb->pos.y - textH;
+    }
+
+    // 3. Retornar los límites con los márgenes de seguridad para anti-aliasing
+    *x = wipeX - 2;
+    *y = wipeY - 2;
+    *w = textW + 4;
+    *h = textH + 4;
+
     return true;
   }
+
+  case WD_TYPE_SLIDER: {
+    gfx_Slider *sl = (gfx_Slider *)widget->pvWidget;
+
+    // 1. Calcular el mismo radio gigante que usamos en el renderizador
+    uint16_t dynamicKnobRadius = sl->size.height * 1.15;
+
+    // 2. Calcular cuánto "sobresale" la perilla por arriba y abajo
+    int16_t knobBleedY = dynamicKnobRadius - (sl->size.height / 2);
+    if (knobBleedY < 0)
+      knobBleedY = 0;
+
+    // 3. Definir la huella total que envuelve la perilla gigante en los
+    // extremos
+    *x = sl->pos.x - dynamicKnobRadius - 2;
+    *y = sl->pos.y - knobBleedY - 2;
+    *w = sl->size.width + (dynamicKnobRadius * 2) + 4;
+    *h = sl->size.height + (knobBleedY * 2) + 4;
+
+    return true;
+  }
+  case WD_TYPE_GRAPH: {
+    gfx_Graph *graph = (gfx_Graph *)widget->pvWidget;
+    *x = graph->pos.x;
+    *y = graph->pos.y;
+    *w = graph->size.width;
+    *h = graph->size.height;
+    return true;
+  }
+
   default:
     return false;
   }
@@ -795,6 +856,12 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
         case WD_TYPE_LABEL:
           gfx_drawLabel(psPixelBuffer, (gfx_Label *)iter->sWidget.pvWidget);
           break;
+        case WD_TYPE_SLIDER:
+          gfx_drawSlider(psPixelBuffer, (gfx_Slider *)iter->sWidget.pvWidget);
+          break;
+		case WD_TYPE_GRAPH:
+		  gfx_drawGraph(psPixelBuffer, (gfx_Graph *)iter->sWidget.pvWidget);
+		  break;
         default:
           break;
         }
@@ -947,35 +1014,33 @@ void Gfx_RenderTask(void) {
             }
 
             // Margin of safety — absorbs font bearing overhang
-			wipeX -= 1;
-			wipeY -= 1;
-			textW += 8;
-			textH += 4;
-			
-			// Union bounding box (shrinking ghost fix)
-			if (lb->oldSize.width > 0) {
-			    bboxX = (wipeX < lb->oldPos.x) ? wipeX : lb->oldPos.x;
-			    bboxY = (wipeY < lb->oldPos.y) ? wipeY : lb->oldPos.y;
-			    int16_t rightEdge  = ((wipeX + textW) > (lb->oldPos.x + lb->oldSize.width))
-			                          ? (wipeX + textW) : (lb->oldPos.x + lb->oldSize.width);
-			    int16_t bottomEdge = ((wipeY + textH) > (lb->oldPos.y + lb->oldSize.height))
-			                          ? (wipeY + textH) : (lb->oldPos.y + lb->oldSize.height);
-			    bboxW = rightEdge  - bboxX;
-			    bboxH = bottomEdge - bboxY;
-			} else {
-			    bboxX = wipeX;
-			    bboxY = wipeY;
-			    bboxW = textW;
-			    bboxH = textH;
-			}
-			
-			// Save expanded footprint for next frame
-			lb->oldPos.x     = wipeX;
-			lb->oldPos.y     = wipeY;
-			lb->oldSize.width  = textW;
-			lb->oldSize.height = textH;
-			
-			// No more bboxW += 50
+                        wipeX -= 1;
+                        wipeY -= 1;
+                        textW += 8;
+                        textH += 4;
+
+                        // Union bounding box (shrinking ghost fix)
+                        if (lb->oldSize.width > 0) {
+                            bboxX = (wipeX < lb->oldPos.x) ? wipeX :
+lb->oldPos.x; bboxY = (wipeY < lb->oldPos.y) ? wipeY : lb->oldPos.y; int16_t
+rightEdge  = ((wipeX + textW) > (lb->oldPos.x + lb->oldSize.width)) ? (wipeX +
+textW) : (lb->oldPos.x + lb->oldSize.width); int16_t bottomEdge = ((wipeY +
+textH) > (lb->oldPos.y + lb->oldSize.height)) ? (wipeY + textH) : (lb->oldPos.y
++ lb->oldSize.height); bboxW = rightEdge  - bboxX; bboxH = bottomEdge - bboxY;
+                        } else {
+                            bboxX = wipeX;
+                            bboxY = wipeY;
+                            bboxW = textW;
+                            bboxH = textH;
+                        }
+
+                        // Save expanded footprint for next frame
+                        lb->oldPos.x     = wipeX;
+                        lb->oldPos.y     = wipeY;
+                        lb->oldSize.width  = textW;
+                        lb->oldSize.height = textH;
+
+                        // No more bboxW += 50
 
             // bboxW += 4;
 
@@ -1038,7 +1103,7 @@ void Gfx_RenderTask(void) {
     uint32_t addr = job.destRAMG;
     EVE_AddrForWr(addr);
 
-	HAL_SPI_TX();
+        HAL_SPI_TX();
 
     // Fire the DMA payload!
     HAL_SPI_uDMATransfer(job.pSrcSDRAM, NULL, job.length, true);
@@ -1063,7 +1128,7 @@ void Gfx_RenderTask(void) {
     // 3. Now it is completely safe to terminate the transfer
     HAL_SPI_CS_Disable();
 
-	
+
     // g_RenderEngine.state = RENDER_IDLE;
 
     if (g_DMAQueue.count > 0) {
@@ -1072,7 +1137,7 @@ void Gfx_RenderTask(void) {
       g_RenderEngine.state = RENDER_IDLE;
     }
 
-	// DisplayBitmap();
+        // DisplayBitmap();
     break;
 
   case RENDER_WAIT_SG_ISR:
@@ -1128,8 +1193,11 @@ void Gfx_RenderTask(void) {
 
       while (iter != NULL) {
         bool isDirty = false;
-        int16_t bboxX, bboxY, bboxW, bboxH;
+        int16_t bboxX = 0, bboxY = 0, bboxW = 0, bboxH = 0;
 
+        // ==========================================
+        // EVALUADOR DE WIDGETS
+        // ==========================================
         if (iter->sWidget.eWidgetType == WD_TYPE_BUTTON) {
           gfx_Button *btn = (gfx_Button *)iter->sWidget.pvWidget;
           if (btn->bIsDirty) {
@@ -1190,34 +1258,83 @@ void Gfx_RenderTask(void) {
             wipeY -= 1;
             textW += 8;
             textH += 4;
-            
+
             if (lb->oldSize.width > 0) {
-                bboxX = (wipeX < lb->oldPos.x) ? wipeX : lb->oldPos.x;
-                bboxY = (wipeY < lb->oldPos.y) ? wipeY : lb->oldPos.y;
-                int16_t rightEdge  = ((wipeX + textW) > (lb->oldPos.x + lb->oldSize.width))
-                                      ? (wipeX + textW) : (lb->oldPos.x + lb->oldSize.width);
-                int16_t bottomEdge = ((wipeY + textH) > (lb->oldPos.y + lb->oldSize.height))
-                                      ? (wipeY + textH) : (lb->oldPos.y + lb->oldSize.height);
-                bboxW = rightEdge  - bboxX;
-                bboxH = bottomEdge - bboxY;
+              bboxX = (wipeX < lb->oldPos.x) ? wipeX : lb->oldPos.x;
+              bboxY = (wipeY < lb->oldPos.y) ? wipeY : lb->oldPos.y;
+              int16_t rightEdge = ((wipeX + textW) > (lb->oldPos.x + lb->oldSize.width))
+                                      ? (wipeX + textW)
+                                      : (lb->oldPos.x + lb->oldSize.width);
+              int16_t bottomEdge = ((wipeY + textH) > (lb->oldPos.y + lb->oldSize.height))
+                                       ? (wipeY + textH)
+                                       : (lb->oldPos.y + lb->oldSize.height);
+              bboxW = rightEdge - bboxX;
+              bboxH = bottomEdge - bboxY;
             } else {
-                bboxX = wipeX;
-                bboxY = wipeY;
-                bboxW = textW;
-                bboxH = textH;
+              bboxX = wipeX;
+              bboxY = wipeY;
+              bboxW = textW;
+              bboxH = textH;
             }
-            
-            lb->oldPos.x     = wipeX;
-            lb->oldPos.y     = wipeY;
-            lb->oldSize.width  = textW;
+
+            lb->oldPos.x = wipeX;
+            lb->oldPos.y = wipeY;
+            lb->oldSize.width = textW;
             lb->oldSize.height = textH;
-            
+
             isDirty = true;
             lb->bIsDirty = false;
           }
+        } else if (iter->sWidget.eWidgetType == WD_TYPE_SLIDER) {
+          gfx_Slider *sl = (gfx_Slider *)iter->sWidget.pvWidget;
+
+          if (sl->bIsDirty) {
+            uint16_t thickness = sl->bIsVertical ? sl->size.width : sl->size.height;
+            uint16_t dynamicKnobRadius = thickness * 1.15; // Usando el factor ajustado
+            
+            // Calculamos el desbordamiento en función de la orientación
+            int16_t knobBleedX = 0;
+            int16_t knobBleedY = 0;
+
+            if (sl->bIsVertical) {
+                knobBleedX = dynamicKnobRadius - (thickness / 2);
+                if (knobBleedX < 0) knobBleedX = 0;
+            } else {
+                knobBleedY = dynamicKnobRadius - (thickness / 2);
+                if (knobBleedY < 0) knobBleedY = 0;
+            }
+
+            bboxX = sl->pos.x - knobBleedX - 2;
+            bboxY = sl->pos.y - knobBleedY - 2;
+            bboxW = sl->size.width + (knobBleedX * 2) + 4;
+            bboxH = sl->size.height + (knobBleedY * 2) + 4;
+
+            sl->bIsDirty = false;
+            isDirty = true;
+          }
+        } else if (iter->sWidget.eWidgetType == WD_TYPE_GRAPH) {
+          gfx_Graph *graph = (gfx_Graph *)iter->sWidget.pvWidget;
+
+          if (graph->bIsDirty) {
+            // La gráfica está perfectamente autocontenida
+            bboxX = graph->pos.x - 2;
+            bboxY = graph->pos.y - 2;
+            bboxW = graph->size.width + 4;
+            bboxH = graph->size.height + 4;
+
+            graph->bIsDirty = false;
+            isDirty = true;
+          }
         }
 
+        // ==========================================
+        // FASE DE COMPOSICIÓN (Fuera de los evaluadores)
+        // ==========================================
+        // ==========================================
+        // FASE DE COMPOSICIÓN (Fuera de los evaluadores)
+        // ==========================================
         if (isDirty) {
+          // Alineación a pares (Requisito de muchos controladores DMA/LCD)
           if (bboxX % 2 != 0) {
             bboxX -= 1;
             bboxW += 1;
@@ -1226,12 +1343,34 @@ void Gfx_RenderTask(void) {
             bboxW += 1;
           }
 
-          gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bboxX,
-                                    bboxY, bboxW, bboxH);
+            // g_bRequestFullRepaint = true;
+            // break; 
+          // --- DECISIÓN: ¿Parcial o Completo? ---
+          // Evaluamos si las filas necesarias (bboxH) caben en la cola.
+          // Dejamos un pequeño margen de seguridad (ej. 10 trabajos) por si
+          // ya había algo encolado previamente.
+          if (bboxH * bboxW > 600 * 250) {
+            
+            // 1. Levantamos la bandera global para el repintado masivo
+            g_bRequestFullRepaint = true;
+            
+            // 2. Abortamos el bucle actual de widgets.
+            // Al hacer break, el iterador se detiene, la función termina su 
+            // evaluación de RENDER_IDLE, y en el próximo ciclo del main, 
+            // entrará directamente al bloque de repintado masivo (paso 3 de tu código).
+            break; 
+            
+          } else {
+            // Si cabe perfectamente en la cola, hacemos el dibujado rápido parcial
+            gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bboxX,
+                                      bboxY, bboxW, bboxH);
 
-          Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX, bboxY, bboxW,
-                                   bboxH);
+            Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX, bboxY, bboxW,
+                                     bboxH);
+          }
         }
+        
+        // ¡Avance incondicional del iterador (Evita el loop infinito)!
         iter = iter->psNext;
       }
     }
@@ -1246,34 +1385,35 @@ void Gfx_RenderTask(void) {
     // Assert CS LOW
     HAL_SPI_CS_Enable();
 
-    // --- DEBUG FIX: Pure CPU Polling Transfer ---
+    // --- CPU Polling Transfer ---
     uint8_t *pData = (uint8_t *)job.pSrcSDRAM;
-	uint32_t i = 0;
+    uint32_t i = 0;
+    
     if (g_bIsQuadActive) {
-        // Set bus to Write direction
-        MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-        
-        // Command + Address bytes
-        MAP_SSIDataPut(SSI3_BASE, (uint8_t)((job.destRAMG >> 16) | 0x80)); // 0x80 = MEM_WRITE
-        MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG >> 8));
-        MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG));
+      // Set bus to Write direction
+      MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
 
-        // Pump payload directly into TX FIFO
-        for (; i < job.length; i++) {
-            MAP_SSIDataPut(SSI3_BASE, pData[i]);
-        }
+      // Command + Address bytes
+      MAP_SSIDataPut(SSI3_BASE, (uint8_t)((job.destRAMG >> 16) | 0x80)); // 0x80 = MEM_WRITE
+      MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG >> 8));
+      MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG));
+
+      // Pump payload directly into TX FIFO
+      for (; i < job.length; i++) {
+        MAP_SSIDataPut(SSI3_BASE, pData[i]);
+      }
     } else {
-        // Legacy SPI
-        EVE_AddrForWr(job.destRAMG);
+      // Legacy SPI
+      EVE_AddrForWr(job.destRAMG);
 
-        for (i = 0; i < job.length; i++) {
-            // Using your existing block/read-write wrapper
-            HAL_SPI_ReadWrite8(pData[i]);
-        }
+      for (i = 0; i < job.length; i++) {
+        HAL_SPI_ReadWrite8(pData[i]);
+      }
     }
 
     // Absolutely crucial: Wait for the last byte to physically leave the wire
-    while (MAP_SSIBusy(SSI3_BASE)) {}
+    while (MAP_SSIBusy(SSI3_BASE)) {
+    }
 
     // Pull CS High
     HAL_SPI_CS_Disable();
@@ -1288,7 +1428,7 @@ void Gfx_RenderTask(void) {
   }
 
   case RENDER_WAIT_DMA:
-    // Left empty/bypassed intentionally for CPU debugging. 
+    // Left empty/bypassed intentionally for CPU debugging.
     // Acts as a safety net back to IDLE.
     g_RenderEngine.state = RENDER_IDLE;
     break;
@@ -1304,4 +1444,4 @@ void Gfx_RenderTask(void) {
     }
     break;
   }
-} 
+}

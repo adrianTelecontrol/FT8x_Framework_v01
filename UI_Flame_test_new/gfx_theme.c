@@ -63,6 +63,20 @@ static void onChangeThemeEvent(uint32_t arg) {
 	Event_Post(EVT_CMD_FULL_REPAINT, 0);
 }
 
+// Función de ayuda para resolver el fontId basado en el tema actual
+int8_t gfx_ResolveFontId(gfx_TypoStyle_e typo) {
+    if (g_pCurrentTheme == NULL) return -1;
+    
+    switch (typo) {
+        case TYPO_H1: return g_pCurrentTheme->fonts.h1;
+        case TYPO_H2: return g_pCurrentTheme->fonts.h2;
+        case TYPO_BODY: return g_pCurrentTheme->fonts.body;
+        case TYPO_CAPTION: return g_pCurrentTheme->fonts.caption;
+        case TYPO_MONO: return g_pCurrentTheme->fonts.mono;
+        default: return -1;
+    }
+}
+
 // ---------------------------------------------------------
 // INITIALIZATION
 // ---------------------------------------------------------

@@ -27,6 +27,8 @@ typedef enum {
   WD_TYPE_RECT,
   WD_TYPE_BUTTON,
   WD_TYPE_LABEL,
+  WD_TYPE_SLIDER,
+  WD_TYPE_GRAPH,
 } widget_type_e;
 
 typedef struct RegionTouchObject {
@@ -119,6 +121,56 @@ typedef struct {
     bool bIsDirty;
 } gfx_Label;
 
+typedef struct Slider{
+	Size size;
+	Position pos;
+	RegionTouchObject regTouch;
+	
+	int16_t minValue;
+	int16_t maxValue;
+	int16_t currentValue;
+
+	uint16_t knobRadius;
+	uint8_t trackHeight;
+	
+	gfx_WidgetStyle_e style;
+
+	char *name;
+	bool bIsVertical;
+	bool bIsDirty;
+	bool bShowKnob;
+
+	void (*onValueChanged)(struct Slider *, int16_t newValue);
+} gfx_Slider;
+
+typedef struct Graph {
+    Size size;
+    Position pos;
+
+    int16_t *data;         
+    uint16_t maxPoints;    
+    uint16_t head;         
+
+    int16_t minY;          
+    int16_t maxY;          
+
+    uint8_t gridLinesX;    
+    uint8_t gridLinesY;    
+
+    // --- NUEVAS PROPIEDADES DE PERSONALIZACIÓN ---
+    uint16_t bgColor;      // Color de fondo de la gráfica
+    uint16_t gridColor;    // Color de la cuadrícula
+    uint16_t lineColor;    // Color de la señal
+    uint8_t lineWidth;     // Grosor de la línea en píxeles
+
+	gfx_TypoStyle_e typo;
+	uint16_t textColor;
+	bool bShowLabels;
+    
+    char *name;
+    bool bIsDirty;
+} gfx_Graph;
+
 typedef struct {
   widget_type_e eWidgetType;
 
@@ -162,6 +214,15 @@ void gfx_calibrate(void);
 //
 // ************ PrimitiveFuncitons ************************
 //
+
+void gfx_writeLine(pixel16_t *pBuf, int16_t x0, int16_t y0, int16_t x1,
+                   int16_t y1, uint16_t color);
+
+void gfx_drawFastVLine(pixel16_t *pBuf, int16_t x, int16_t y, int16_t h,
+                       uint16_t color);
+
+void gfx_drawFastHLine(pixel16_t *pBuf, int16_t x, int16_t y, int16_t w,
+                       uint16_t color);
 void gfx_fillRect(pixel16_t *pBuf, int16_t x, int16_t y, int16_t w, int16_t h,
                   uint16_t color);
 void gfx_drawCircle(pixel16_t *pBuf, int16_t x0, int16_t y0, int16_t r,
@@ -202,4 +263,12 @@ void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn);
 void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb);
 
 void gfx_drawRectangle(pixel16_t *pBuf, gfx_Rectangle *rect);
+
+void gfx_drawSlider(pixel16_t *pBuf, gfx_Slider *slider);
+
+bool gfx_processSliderTouch(gfx_Slider *sl, TouchStatus touch);
+
+void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph);
+
+void gfx_GraphAddPoint(gfx_Graph *graph, int16_t newValue);
 #endif // GFX_H
