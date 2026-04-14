@@ -1,0 +1,40 @@
+#ifndef EVENT_ENGINE_H
+#define EVENT_ENGINE_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef enum {
+	// Commands from GUI -> System
+	EVT_CMD_CHANGE_THEME = 0,
+	EVT_CMD_FULL_REPAINT,
+	// Updates from System -> GUI
+	EVT_SYS_COUNTER_CHANGED,
+	EVT_SYS_COUNTER2_CHANGED,
+	EVT_SYS_SLIDER_VALUE_CHANGED,
+	EVT_SYS_CHANGE_CURRENT_FORM,
+	EVT_SYS_NEXT_FORM,
+	EVT_SYS_NEW_GRAPH_VALUE,
+	EVT_SYS_PREV_FORM,
+	EVT_SYS_NEW_SAWTOOTH_VALUE,
+	
+	NUM_EVENTS,
+} EventID_e;
+
+typedef struct {
+	EventID_e id;
+	int32_t arg;
+} SystemEvent_t;
+
+typedef void (*EventHandler_fn)(uint32_t arg);
+
+bool Event_Post(EventID_e id, int32_t arg);
+
+bool Event_Receive(SystemEvent_t *pEvent);
+
+bool Event_Subscribe(EventID_e id, EventHandler_fn handler);
+
+bool Event_Dispatch(void);
+bool Event_Init(void);
+
+#endif	//EVENT_ENGINE_H

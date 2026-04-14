@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <math.h>
 
 #include "driverlib/sysctl.h"
 
@@ -49,9 +50,11 @@ void controlSimulatiorTask(void) {
 		}
 	}	
 
-	if(g_currExecTime % 700 == 0)
+	if(g_currExecTime % 1 == 0)
 	{
-		uint32_t val = rand() % 70;
+		//uint32_t val = rand() % 70;
+
+		uint32_t val = (uint32_t)( 25.0f * sin((double)g_currExecTime / 700.0) + 50.0 );
 		
 		bool ret = Event_Post(EVT_SYS_NEW_GRAPH_VALUE, val);
 		while(!ret)

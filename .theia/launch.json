@@ -221,6 +221,15 @@
                     ]
                 }
             ]
+        },
+        {
+            "name": "GFX_hybrid_test",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "GFX_hybrid_test",
+                "resourceId": "/GFX_hybrid_test"
+            }
         }
     ]
 }

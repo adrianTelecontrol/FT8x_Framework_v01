@@ -15,7 +15,7 @@
 
 #include "graph_form.h"
 
-#define NUM_POINTS	500
+#define NUM_POINTS	1000
 
 static gfx_Canvas g_sGraphFormCanvas;
 int16_t g_i16GraphFormID = 0;
@@ -67,9 +67,9 @@ void initGraphForm(void) {
 		.bgColor = g_pCurrentTheme->palette.surface,
 		.gridColor = g_pCurrentTheme->palette.textMuted,
 		.lineColor = g_pCurrentTheme->palette.primary,
-		.lineWidth = 1,
+		.lineWidth = 2,
 		.typo = TYPO_CAPTION,
-		.textColor = g_pCurrentTheme->palette.textMain,
+		.textColor = g_pCurrentTheme->palette.textMuted,
 		.bShowLabels = true,
 	};
 	memset(graphData, 0, NUM_POINTS * 2);
