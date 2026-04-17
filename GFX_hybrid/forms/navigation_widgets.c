@@ -49,9 +49,9 @@ void initNavigationWidgets(void) {
 	btnPrevWidget = (gfx_Button) {
 		.label = "<",
 		.size.width = 70,
-		.size.height = 50,
+		.size.height = 35,
 		.pos.x = 20,
-		.pos.y = 30,
+		.pos.y = 5,
 		.radius = 10,
 		.name = "prevBtn",
 		.borderWidth = 0,
@@ -68,9 +68,9 @@ void initNavigationWidgets(void) {
 	btnNextWidget = (gfx_Button) {
 		.label = ">",
 		.size.width = 70,
-		.size.height = 50,
+		.size.height = 35,
 		.pos.x = 100,
-		.pos.y = 30,
+		.pos.y = 5,
 		.radius = 10,
 		.name = "nextBtn",
 		.borderWidth = 0,

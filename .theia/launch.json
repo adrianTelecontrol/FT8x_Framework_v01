@@ -230,6 +230,15 @@
                 "name": "GFX_hybrid_test",
                 "resourceId": "/GFX_hybrid_test"
             }
+        },
+        {
+            "name": "GFX_hybrid (1)",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "GFX_hybrid",
+                "resourceId": "/GFX_hybrid"
+            }
         }
     ]
 }

@@ -25,6 +25,7 @@ extern pixel16_t *g_pSendingBuffer;
 extern uint32_t g_ui32StartTxCycles;
 extern uint32_t g_ui32EndTxCycles;
 
+extern bool g_bIsBackgroundReady;
 
 // --- DIRTY RECTANGLE QUEUE STRUCTURES ---
 typedef struct {

@@ -44,6 +44,7 @@
 #include "tiva_log.h"
 #include "event_engine.h"
 #include "video_engine.h"
+#include "hal_eeprom.h"
 #include "test/control_sim.h"
 
 #include "draw_bitmap.h"
@@ -138,6 +139,14 @@ int main(void) {
 
   //EVE_PlayIntroVideo();
   //gfx_calibrate();
+  bool ret = HAL_EEPROM_init();
+  if(ret)
+	TIVA_LOGI(TASK_NAME, "EEPROM OK");
+  else {
+	TIVA_LOGI(TASK_NAME, "EEPROM Failed");
+	while(1);
+  }
+  gestureEngineCalibrateScreen();
 
   StartCycleCounter(); // The DWT will be our clock source
 
@@ -160,8 +169,8 @@ int main(void) {
   
   while (1) {
 	Gfx_RenderTask();
-    //formManagerComposite(g_pDrawingBuffer);
-  	//Gfx_render();
+
+	formManagerRenderEVEComponents();
 
     gestureEngineTask();
 

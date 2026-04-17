@@ -86,7 +86,7 @@ void gfx_calibrate(void) {
   API_CMD_DLSTART();
   API_CLEAR_COLOR_RGB(0, 0, 0); // Clear screen
   API_CLEAR(1, 1, 1);
-  API_CMD_TEXT(80, 30, 27, OPT_CENTER, "Presiona los puntos...");
+  API_CMD_TEXT(LCD_WIDTH / 2, LCD_HEIGHT / 2, 30, OPT_CENTER, "Calibracion de pantalla. Presione los puntos.");
   API_CMD_CALIBRATE(0xAAAAAAAA);
   API_DISPLAY();             // Tell EVE that this is end of list
   API_CMD_SWAP();            // Swap buffers in EVE to make this list active
@@ -173,6 +173,9 @@ bool gfx_compositeFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer) {
       break;
 	case WD_TYPE_GRAPH:
       gfx_drawGraph(psPixelBuffer, (gfx_Graph *)iter->sWidget.pvWidget);	
+      break;
+	case WD_TYPE_MULTIGRAPH:
+      gfx_drawMultiGraph(psPixelBuffer, (gfx_MultiGraph *)iter->sWidget.pvWidget);	
       break;
     default:
       break;
@@ -1452,7 +1455,7 @@ void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph) {
     graph->bIsDirty = false;
 }
 
-void UpdateDisplayWithGraphOverlay(gfx_Graph *graph) {
+void UpdateDisplayWithGraphOverlay(gfx_Graph *graph, gfx_Graph *graph2) {
   // 1. Iniciamos una nueva Display List
   API_LIB_BeginCoProList();
   API_CMD_DLSTART();
@@ -1477,21 +1480,20 @@ void UpdateDisplayWithGraphOverlay(gfx_Graph *graph) {
 
   API_BEGIN(BITMAPS);
   API_VERTEX2II(0, 0, 0, 0); // Dibuja todo el fondo
+  API_END(); // Cerramos el dibujo de bitmaps
 
   // =======================================================
-  // CAPA 2: LAS LÍNEAS DE HARDWARE SOBRE EL BITMAP
+  // CAPA 2: GRÁFICA 1
   // =======================================================
-
   if (graph != NULL && graph->data != NULL && graph->maxPoints > 1) {
       int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
       if (rangeY <= 0) rangeY = 1;
 
-      // EL CAMBIO MAESTRO: LINE_STRIP en lugar de LINES
       API_BEGIN(LINE_STRIP); 
       API_LINE_WIDTH(graph->lineWidth * 16 / 2); 
       
-	  uint32_t color = 0x22AAAA;
-	  API_COLOR_RGB((uint8_t)(color >> 16), (uint8_t)(color >> 8), (uint8_t)color);
+      uint32_t color = 0x22AAAA; 
+      API_COLOR_RGB((uint8_t)(color >> 16), (uint8_t)(color >> 8), (uint8_t)color);
 
 	  uint16_t i = 0;
       for (; i < graph->maxPoints; i++) {
@@ -1505,61 +1507,58 @@ void UpdateDisplayWithGraphOverlay(gfx_Graph *graph) {
           int16_t px = (int16_t)((int32_t)graph->pos.x + ((int32_t)reverse_i * (graph->size.width - 1)) / (graph->maxPoints - 1));
           int16_t py = (int16_t)((int32_t)graph->pos.y + (graph->size.height - 1) - (((int32_t)(val - graph->minY) * (graph->size.height - 1)) / rangeY));
 
-          // Solo envías el vértice actual. El hardware los conecta automáticamente.
           API_VERTEX2F(px * 16, py * 16);
-
-		  //if (i % 500 == 0 && i > 0) {
-          //     API_LIB_AwaitCoProEmpty(); 
-          //     // O tu función equivalente para sincronizar el FIFO
-          // }
       }
+      
+      API_END(); 
+      
+      // Vaciamos el FIFO de comandos (RAM_CMD) hacia la RAM_DL 
   }
+  
+  API_LIB_EndCoProList(); 
+  
+  API_LIB_AwaitCoProEmpty();
 
-  /*
-  if (graph != NULL && graph->data != NULL && graph->maxPoints > 1) {
-      int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
+  // 3. Volvemos a abrir la ráfaga SPI para continuar inyectando comandos
+  API_LIB_BeginCoProList();
+  // =======================================================
+  // CAPA 3: GRÁFICA 2
+  // =======================================================
+  if (graph2 != NULL && graph2->data != NULL && graph2->maxPoints > 1) {
+      int32_t rangeY = (int32_t)graph2->maxY - (int32_t)graph2->minY;
       if (rangeY <= 0) rangeY = 1;
 
-      API_BEGIN(LINES);
-      API_LINE_WIDTH(graph->lineWidth * 16 / 2); // 16 = 1 píxel en EVE
+      API_BEGIN(LINE_STRIP); 
+      API_LINE_WIDTH(graph2->lineWidth * 16 / 2); 
       
-      // Ajusta esto a tu macro o función de color para EVE
-	  uint32_t color = 0x22AAAA;
-	  API_COLOR_RGB((uint8_t)(color >> 16), (uint8_t)(color >> 8), (uint8_t)color);
-      //API_COLOR_RGB((graph->lineColor >> 11) & 0x1F, (graph->lineColor >> 5) & 0x3F, graph->lineColor & 0x1F);
+      uint32_t color = 0xAA2222; 
+      API_COLOR_RGB((uint8_t)(color >> 16), (uint8_t)(color >> 8), (uint8_t)color);
 
-      int16_t prevX = -1, prevY = -1;
-	   uint16_t i = 0;
-      for (; i < graph->maxPoints; i++) {
-          uint16_t dataIdx = (graph->head + i) % graph->maxPoints;
-          int16_t val = graph->data[dataIdx];
+	  uint16_t i = 0;
+      for (; i < graph2->maxPoints; i++) {
+          uint16_t dataIdx = (graph2->head + i) % graph2->maxPoints;
+          int16_t val = graph2->data[dataIdx];
 
-          if (val < graph->minY) val = graph->minY;
-          if (val > graph->maxY) val = graph->maxY;
+          if (val < graph2->minY) val = graph2->minY;
+          if (val > graph2->maxY) val = graph2->maxY;
 
-          uint16_t reverse_i = (graph->maxPoints - 1) - i;
-          int16_t px = (int16_t)((int32_t)graph->pos.x + ((int32_t)reverse_i * (graph->size.width - 1)) / (graph->maxPoints - 1));
-          int16_t py = (int16_t)((int32_t)graph->pos.y + (graph->size.height - 1) - (((int32_t)(val - graph->minY) * (graph->size.height - 1)) / rangeY));
+          uint16_t reverse_i = (graph2->maxPoints - 1) - i;
+          int16_t px = (int16_t)((int32_t)graph2->pos.x + ((int32_t)reverse_i * (graph2->size.width - 1)) / (graph2->maxPoints - 1));
+          int16_t py = (int16_t)((int32_t)graph2->pos.y + (graph2->size.height - 1) - (((int32_t)(val - graph2->minY) * (graph2->size.height - 1)) / rangeY));
 
-          if (prevX != -1) {
-              API_VERTEX2F(prevX * 16, prevY * 16);
-              API_VERTEX2F(px * 16, py * 16);
-          }
-          prevX = px;
-          prevY = py;
-    	}
-  } */
+          API_VERTEX2F(px * 16, py * 16);
+      }
+      
+      API_END(); 
+  }
 
   // 3. Cerramos y hacemos el SWAP en el hardware
-  API_END();
   API_DISPLAY();
   API_CMD_SWAP();
   API_LIB_EndCoProList();
 
+  // Esperamos a que todo el frame (SWAP incluido) sea procesado
   API_LIB_AwaitCoProEmpty();
-
-  
-  // Opcional: AwaitCoProEmpty() dependiendo de qué tan rápido inyectes datos.
 }
 
 void gfx_GraphAddPoint(gfx_Graph *graph, int16_t newValue) {
@@ -1571,51 +1570,180 @@ void gfx_GraphAddPoint(gfx_Graph *graph, int16_t newValue) {
     // Avanzamos el 'head' circularmente
     graph->head = (graph->head + 1) % graph->maxPoints;
 
-	UpdateDisplayWithGraphOverlay(graph);
+	//UpdateDisplayWithGraphOverlay(graph);
     // Le avisamos al motor que debe redibujar la gráfica en el próximo frame
     //graph->bIsDirty = true;
+	graph->bEVEDirty = true;
 }
 
-void gfx_drawGraph_HardwareLines(gfx_Graph *graph) {
-    if (graph->data == NULL || graph->maxPoints <= 1) return;
+void gfx_GraphRenderEVEComponents(gfx_Graph *graph) {
+  if (graph != NULL && graph->data != NULL && graph->maxPoints > 1) {
+      int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
+      if (rangeY <= 0) rangeY = 1;
 
-    int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
-    if (rangeY <= 0) rangeY = 1;
+      API_BEGIN(LINE_STRIP); 
+      API_LINE_WIDTH(graph->lineWidth * 16 / 2); 
+      
+      uint32_t color = 0x22AAAA; 
+      API_COLOR_RGB((uint8_t)(color >> 16), (uint8_t)(color >> 8), (uint8_t)color);
 
-    // Tell EVE to start drawing lines
-    API_BEGIN(LINES);
+	  uint16_t i = 0;
+      for (; i < graph->maxPoints; i++) {
+          uint16_t dataIdx = (graph->head + i) % graph->maxPoints;
+          int16_t val = graph->data[dataIdx];
+
+          if (val < graph->minY) val = graph->minY;
+          if (val > graph->maxY) val = graph->maxY;
+
+          uint16_t reverse_i = (graph->maxPoints - 1) - i;
+          int16_t px = (int16_t)((int32_t)graph->pos.x + ((int32_t)reverse_i * (graph->size.width - 1)) / (graph->maxPoints - 1));
+          int16_t py = (int16_t)((int32_t)graph->pos.y + (graph->size.height - 1) - (((int32_t)(val - graph->minY) * (graph->size.height - 1)) / rangeY));
+
+          API_VERTEX2F(px * 16, py * 16);
+      }
+      
+      API_END(); 
+      // Vaciamos el FIFO de comandos (RAM_CMD) hacia la RAM_DL 
+  }
+}
+
+void gfx_MultiGraphAddData(gfx_MultiGraph *graph, uint8_t traceIndex, int16_t newValue) {
+    // Validaciones de seguridad
+    if (!graph || graph->maxPoints == 0) return;
+    if (traceIndex >= graph->activeTraces || graph->dataSets[traceIndex] == NULL) return;
+
+    // 1. Obtenemos la cabecera actual específica de este trazo
+    uint16_t currentHead = graph->heads[traceIndex];
+
+    // 2. Inyectamos el nuevo valor
+    graph->dataSets[traceIndex][currentHead] = newValue;
+
+    // 3. Avanzamos ÚNICAMENTE la cabecera de este trazo
+    graph->heads[traceIndex] = (currentHead + 1) % graph->maxPoints;
+
+	graph->bEVEDirty = true;
+}
+
+void gfx_drawMultiGraph(pixel16_t *pBuf, gfx_MultiGraph *graph) {
+    if (!pBuf || !graph) return;
+
+    // 1. Draw Background
+    gfx_fillRoundRect(pBuf, graph->pos.x, graph->pos.y, 
+                      graph->size.width, graph->size.height, 4, graph->bgColor);
+
+    // =========================================================
+    // 2. Draw Grid and Labels
+    // =========================================================
+    int8_t fontId = -1;
+    uint16_t textW = 0, textH = 0;
     
-    // Set the line width and color natively in hardware!
-    // EVE uses 1/16th pixel precision, so 1 pixel = 16.
-    API_LINE_WIDTH(graph->lineWidth * 16); 
-    
-    // Replace with your EVE color command
-    // e.g., API_COLOR_RGB((graph->lineColor >> 11) & 0x1F, ...); 
-    gfx_ColorText(graph->lineColor); 
-
-    int16_t prevX = -1, prevY = -1;
-
-	uint16_t i = 0;
-    for (; i < graph->maxPoints; i++) {
-        uint16_t dataIdx = (graph->head + i) % graph->maxPoints;
-        int16_t val = graph->data[dataIdx];
-
-        if (val < graph->minY) val = graph->minY;
-        if (val > graph->maxY) val = graph->maxY;
-
-        // Calculate X and Y exactly as before
-        uint16_t reverse_i = (graph->maxPoints - 1) - i;
-        int16_t px = (int16_t)((int32_t)graph->pos.x + ((int32_t)reverse_i * (graph->size.width - 1)) / (graph->maxPoints - 1));
-        int16_t py = (int16_t)((int32_t)graph->pos.y + (graph->size.height - 1) - (((int32_t)(val - graph->minY) * (graph->size.height - 1)) / rangeY));
-
-        if (prevX != -1) {
-            // Send the vertices to EVE (multiplying by 16 for sub-pixel precision)
-            API_VERTEX2F(prevX * 16, prevY * 16);
-            API_VERTEX2F(px * 16, py * 16);
+    if (graph->bShowLabels) {
+        fontId = gfx_ResolveFontId(graph->typo); 
+        if (fontId >= 0) {
+            gfx_GetStringDimensions("0", fontId, &textW, &textH, 1); 
         }
-        prevX = px;
-        prevY = py;
     }
-    
-    API_END();
+
+    // Y-Axis Horizontal Lines and Texts
+    int16_t stepY = graph->size.height / (graph->gridLinesY + 1);
+    int16_t valueStep = (graph->maxY - graph->minY) / (graph->gridLinesY + 1);
+
+    int i = 0;
+    for (; i <= (graph->gridLinesY + 1); i++) {
+        int16_t gy = graph->pos.y + (i * stepY);
+        int16_t gridValue = graph->maxY - (i * valueStep); 
+
+        if (i > 0 && i < (graph->gridLinesY + 1)) {
+            gfx_drawFastHLine(pBuf, graph->pos.x, gy, graph->size.width, graph->gridColor);
+        }
+
+        if (graph->bShowLabels && fontId >= 0) {
+            char valStr[12];
+            snprintf(valStr, sizeof(valStr), "%d", gridValue); 
+            
+            int16_t textX = graph->pos.x + 5;
+            int16_t textY = gy + (textH / 3);
+            
+            if (i == 0) textY = graph->pos.y + 15; 
+            if (i == (graph->gridLinesY + 1)) textY = graph->pos.y + graph->size.height - textH / 3;
+
+            // Use your engine's text drawing function
+            gfx_DrawString(pBuf, fontId, textX, textY, valStr, graph->textColor, ALIGN_LEFT, 1);
+        }
+    }
+
+    // X-Axis Vertical Lines
+    if (graph->gridLinesX > 0) {
+        int16_t stepX = graph->size.width / (graph->gridLinesX + 1);
+		int i = 1;
+        for (; i <= graph->gridLinesX; i++) {
+            int16_t gx = graph->pos.x + (i * stepX);
+            gfx_drawFastVLine(pBuf, gx, graph->pos.y, graph->size.height, graph->gridColor);
+        }
+    }
+
+    graph->bIsDirty = false;
+}
+
+void gfx_MultigraphRenderEVEComponents(gfx_MultiGraph *graph) {
+
+    if (graph != NULL && graph->activeTraces > 0 && graph->maxPoints > 1) {
+        int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
+        if (rangeY <= 0) rangeY = 1;
+
+        // Downsampling (Decimación) to prevent SPI/FIFO overload
+        uint16_t renderPoints = graph->size.width; 
+        if (renderPoints > graph->maxPoints) {
+            renderPoints = graph->maxPoints;
+        }
+
+        if (renderPoints > 1) {
+            
+            // Loop through all active traces dynamically
+			uint8_t trace = 0;
+            for (; trace < graph->activeTraces; trace++) {
+                
+                // Skip if data array is not initialized
+                if (graph->dataSets[trace] == NULL) continue;
+
+                API_BEGIN(LINE_STRIP); 
+                API_LINE_WIDTH(graph->lineWidth * 16 / 2); 
+                
+                // Extract RGB from the specific trace's color (Assuming RGB565 to RGB888 conversion)
+                uint16_t c = graph->lineColors[trace];
+                API_COLOR_RGB((uint8_t)((c >> 8) & 0xF8), (uint8_t)((c >> 3) & 0xFC), (uint8_t)((c << 3) & 0xF8));
+				uint16_t i = 0;
+				uint16_t currentTraceHead = graph->heads[trace];
+                for (; i < renderPoints; i++) {
+                    uint16_t dataOffset = (i * (graph->maxPoints - 1)) / (renderPoints - 1);
+                    // EL CAMBIO: Usamos la cabecera individual de la señal actual
+                    uint16_t dataIdx = (currentTraceHead + dataOffset) % graph->maxPoints;
+                    
+                    int16_t val = graph->dataSets[trace][dataIdx];
+
+                    if (val < graph->minY) val = graph->minY;
+                    if (val > graph->maxY) val = graph->maxY;
+
+                    uint16_t reverse_i = (renderPoints - 1) - i;
+                    int16_t px = (int16_t)((int32_t)graph->pos.x + ((int32_t)reverse_i * (graph->size.width - 1)) / (renderPoints - 1));
+                    int16_t py = (int16_t)((int32_t)graph->pos.y + (graph->size.height - 1) - (((int32_t)(val - graph->minY) * (graph->size.height - 1)) / rangeY));
+
+                    API_VERTEX2F(px * 16, py * 16);
+                }
+                
+                API_END(); // End the current trace
+
+                // =======================================================
+                // THE SPI BURST FIX (Pause between traces)
+                // =======================================================
+                // We only need to pause if there are more traces to draw.
+                // Doing this safely flushes the 1024-command FIFO.
+                if (trace < (graph->activeTraces - 1)) {
+                    API_LIB_EndCoProList(); 
+                    API_LIB_AwaitCoProEmpty();
+                    API_LIB_BeginCoProList();
+                }
+            }
+        }
+    }
 }

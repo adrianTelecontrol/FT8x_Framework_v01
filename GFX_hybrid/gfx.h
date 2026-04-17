@@ -10,6 +10,7 @@
 #include "gfx_theme.h"
 
 #define MAX_CANVAS_WIDGETS 20
+#define MAX_GRAPH_DATA_SETS 5
 
 // Darkens any RGB565 color by 50% safely and instantly
 #define DARKEN_COLOR(c) (((c) & 0xF7DE) >> 1)
@@ -29,6 +30,7 @@ typedef enum {
   WD_TYPE_LABEL,
   WD_TYPE_SLIDER,
   WD_TYPE_GRAPH,
+  WD_TYPE_MULTIGRAPH,
 } widget_type_e;
 
 typedef struct RegionTouchObject {
@@ -169,7 +171,39 @@ typedef struct Graph {
     
     char *name;
     bool bIsDirty;
+	bool bEVEDirty;
 } gfx_Graph;
+
+typedef struct {
+    Size size;
+    Position pos;
+
+    // Array of pointers for data, and array of colors for each trace
+    int16_t *dataSets[MAX_GRAPH_DATA_SETS];
+    uint16_t lineColors[MAX_GRAPH_DATA_SETS]; 
+    
+    uint8_t activeTraces;  // Replaced 'setSize' for clarity
+    uint16_t maxPoints;    
+	uint16_t heads[MAX_GRAPH_DATA_SETS];
+
+    int16_t minY;          
+    int16_t maxY;          
+
+    uint8_t gridLinesX;    
+    uint8_t gridLinesY;    
+
+    uint16_t bgColor;      
+    uint16_t gridColor;    
+    uint8_t lineWidth;     // Global line width for all traces
+
+    gfx_TypoStyle_e typo;
+    uint16_t textColor;
+    bool bShowLabels;
+    
+    char *name;
+    bool bIsDirty;       
+	bool bEVEDirty;
+} gfx_MultiGraph;
 
 typedef struct {
   widget_type_e eWidgetType;
@@ -271,4 +305,14 @@ bool gfx_processSliderTouch(gfx_Slider *sl, TouchStatus touch);
 void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph);
 
 void gfx_GraphAddPoint(gfx_Graph *graph, int16_t newValue);
+
+void gfx_GraphRenderEVEComponents(gfx_Graph *graph);
+
+void UpdateDisplayWithGraphOverlay(gfx_Graph *graph, gfx_Graph *graph2);
+
+void gfx_MultiGraphAddData(gfx_MultiGraph *graph, uint8_t traceIndex, int16_t newValue);
+
+void gfx_drawMultiGraph(pixel16_t *pBuf, gfx_MultiGraph *graph);
+
+void gfx_MultigraphRenderEVEComponents(gfx_MultiGraph *graph);
 #endif // GFX_H

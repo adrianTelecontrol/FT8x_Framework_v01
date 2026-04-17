@@ -23,6 +23,8 @@ void formManagerDirtyRender();
 
 void formManagerComposite(pixel16_t *psPixelBuffer);
 
+void formManagerRenderEVEComponents(void);
+
 void formManagerInit(void);
 
 #endif

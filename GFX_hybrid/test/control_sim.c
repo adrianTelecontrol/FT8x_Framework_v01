@@ -53,7 +53,6 @@ void controlSimulatiorTask(void) {
 	if(g_currExecTime % 1 == 0)
 	{
 		//uint32_t val = rand() % 70;
-
 		uint32_t val = (uint32_t)( 25.0f * sin((double)g_currExecTime / 700.0) + 50.0 );
 		
 		bool ret = Event_Post(EVT_SYS_NEW_GRAPH_VALUE, val);
@@ -61,8 +60,30 @@ void controlSimulatiorTask(void) {
 		{
 			SysCtlDelay(MS_2_CLK(100));
 		}
-
 	}
+
+	if(g_currExecTime % 1 == 0)
+    {
+        // 1. Define the period (how many ticks for one full wave cycle)
+        // 4400 roughly matches the frequency of your previous sine wave
+        const uint32_t PERIOD = 4400 / 2; 
+        
+        // 2. Define the Peak-to-Peak amplitude (75 max - 25 min = 50)
+        const uint32_t AMPLITUDE = 50;
+        
+        // 3. Define the DC Offset (the minimum value the wave hits)
+        const uint32_t OFFSET = 25;
+
+        // Calculate the sawtooth using pure integer math.
+        // We multiply first, then divide, to prevent integer truncation to 0.
+        uint32_t val = (((g_currExecTime % PERIOD) * AMPLITUDE) / PERIOD) + OFFSET;
+        
+        bool ret = Event_Post(EVT_SYS_NEW_SAWTOOTH_VALUE, val);
+        while(!ret)
+        {
+            SysCtlDelay(MS_2_CLK(100)); // Assuming MS_2_CLK is your macro for delay
+        }
+    }
 
 }
 

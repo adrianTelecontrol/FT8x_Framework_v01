@@ -89,6 +89,8 @@ uint32_t g_ui32EndTxCycles;
 
 static bool g_bRequestFullRepaint = false;
 
+bool g_bIsBackgroundReady = false;
+
 volatile DMAJobQueue_t g_DMAQueue = {0};
 
 volatile RenderEngine_t g_RenderEngine = {RENDER_IDLE};
@@ -799,6 +801,9 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
 		case WD_TYPE_GRAPH:
 		  gfx_drawGraph(psPixelBuffer, (gfx_Graph *)iter->sWidget.pvWidget);
 		  break;
+		case WD_TYPE_MULTIGRAPH:
+		  gfx_drawMultiGraph(psPixelBuffer, (gfx_MultiGraph *)iter->sWidget.pvWidget);
+		  break;
         default:
           break;
         }
@@ -821,8 +826,9 @@ void Gfx_RenderTask(void) {
     // 1. If the queue is populated, start the pumping process!
 	//UpdateDisplayWithGraphOverlay(&graphWidget);
     if (g_DMAQueue.count > 0) {
-      // DisplayBitmap(); // Depending on your EVE config, call this if needed
+      DisplayBitmap(); // Depending on your EVE config, call this if needed
       g_RenderEngine.state = RENDER_SEND_ROW;
+	  //g_bIsBackgroundReady = true;
       break;
     }
 
@@ -831,12 +837,15 @@ void Gfx_RenderTask(void) {
       g_bPendingBottomHalf = false;
       Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, LCD_HEIGHT / 2, LCD_WIDTH,
                                LCD_HEIGHT / 2);
+	  
       break;
     }
 
     // 3. ¿Hay una nueva solicitud de repintado masivo?
     if (g_bRequestFullRepaint) {
       g_bRequestFullRepaint = false;
+
+	  g_bIsBackgroundReady = false;
       formManagerComposite(g_pDrawingBuffer);
       Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, LCD_WIDTH,
                                LCD_HEIGHT / 2);
@@ -983,7 +992,22 @@ void Gfx_RenderTask(void) {
             isDirty = true;
             //isDirty = false;
           }
+        } else if (iter->sWidget.eWidgetType == WD_TYPE_MULTIGRAPH) {
+          gfx_MultiGraph *graph = (gfx_MultiGraph *)iter->sWidget.pvWidget;
+
+          if (graph->bIsDirty) {
+            // La gráfica está perfectamente autocontenida
+            bboxX = graph->pos.x - 2;
+            bboxY = graph->pos.y - 2;
+            bboxW = graph->size.width + 4;
+            bboxH = graph->size.height + 4;
+
+            graph->bIsDirty = false;
+            isDirty = true;
+            //isDirty = false;
+          }
         }
+
 
         // ==========================================
         // FASE DE COMPOSICIÓN (Fuera de los evaluadores)
@@ -1081,6 +1105,10 @@ void Gfx_RenderTask(void) {
       g_RenderEngine.state = RENDER_SEND_ROW;
     } else {
       g_RenderEngine.state = RENDER_IDLE;
+      
+      if (!g_bPendingBottomHalf) {
+          g_bIsBackgroundReady = true; 
+      }
     }
     break;
   }
@@ -1089,6 +1117,7 @@ void Gfx_RenderTask(void) {
     // Left empty/bypassed intentionally for CPU debugging.
     // Acts as a safety net back to IDLE.
     g_RenderEngine.state = RENDER_IDLE;
+
     break;
 
   case RENDER_WAIT_SG_ISR:

@@ -1,6 +1,8 @@
 #ifndef GESTURE_ENGINE_H_
 #define GESTURE_ENGINE_H_
 
+#define EEPROM_CALIBRATED_MAGIC_NUMBER	0xFB82
+
 typedef enum
 {
     GESTURE_EMPTY,
@@ -16,7 +18,9 @@ void gestureEngineTask(void);
 
 gesture_type_e gestureEngineGetGesture(void);
 
-TouchStatus gestureEngineGetGestureStatus(void);
+void gestureEngineCalibrateScreen(void);
+
+// TouchStatus gestureEngineGetGestureStatus(void);
 
 #endif 	// GESTURE_ENGINE_H_
 
