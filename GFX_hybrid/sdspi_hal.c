@@ -19,6 +19,7 @@
 #include "bitmap_parser.h"
 #include "helpers.h"
 #include "font_engine.h"
+#include "gfx.h"
 
 #include "sdspi_hal.h"
 
@@ -503,126 +504,175 @@ int SDSPI_FetchBitmap(const char *pcFileName, BitmapHandler_t *psBitmapHandler,
   return 0;
 }
 
-
 bool SDSPI_FetchBDF(BDF_Font_t *psFont, const char *pcFileName, uint16_t startChar, uint16_t endChar)
 {
-	FIL file;
+    FIL file;
     FRESULT fr;
-    char line[64]; // BDF lines are very short, 64 bytes is plenty
+    UINT bytesRead;
 
     fr = f_open(&file, pcFileName, FA_READ);
     if (fr != FR_OK) return false;
 
-    // Initialize the font structure
-	//BDF_Font_t psFont->= *ppsFont->
+    // 1. OBTENER TAMAÑO DEL ARCHIVO Y LEERLO COMPLETO DE GOLPE
+    uint32_t fileSize = f_size(&file);
+    
+    // Asignamos un buffer temporal gigante en la SDRAM para todo el archivo
+    char *fileBuffer = (char *)malloc(fileSize + 1);
+    if (!fileBuffer) {
+        f_close(&file);
+        return false;
+    }
+
+  	uint32_t startTime;
+  	startTime = 0;
+
+  	startTime = GetExecTimeMs();
+    // Leemos todo el archivo en una sola y masiva transacción SPI (Súper rápido)
+    fr = f_read(&file, fileBuffer, fileSize, &bytesRead);
+    f_close(&file); // Ya no necesitamos la SD, podemos cerrarla aquí
+    TIVA_LOGI(TASK_NAME, "Tiempo de carga: %u", GetExecTimeMs() - startTime);
+
+    if (fr != FR_OK || bytesRead != fileSize) {
+        free(fileBuffer);
+        return false;
+    }
+    fileBuffer[fileSize] = '\0'; // Aseguramos que termine en null
+
+    // 2. INICIALIZAR ESTRUCTURAS DE LA FUENTE
     psFont->firstChar = startChar;
     psFont->lastChar = endChar;
     psFont->poolSize = 0;
     
     uint32_t numChars = endChar - startChar + 1;
-
-    // Allocate memory in external SDRAM (Assuming heap is mapped to 0x60000000)
-	uint32_t len =  numChars * sizeof(BDF_Glyph_t);
-	TIVA_LOGI(TASK_NAME, "%u", len);
-    psFont->glyphs = (BDF_Glyph_t *)malloc(len);
-    // psFont->glyphs = (BDF_Glyph_t *)malloc(numChars * sizeof(BDF_Glyph_t));
-    
-	while(psFont->glyphs == NULL)
-	{
-		SysCtlDelay(1000);
-	}
-    // Allocate a large pool for the pixels (e.g., 64KB). 
-    // You can adjust this based on the font size.
+    psFont->glyphs = (BDF_Glyph_t *)calloc(numChars, sizeof(BDF_Glyph_t)); // calloc limpia con ceros automáticamente
     psFont->pixelPool = (uint8_t *)malloc(65536); 
 
     if (!psFont->glyphs || !psFont->pixelPool) {
-        f_close(&file);
-        return false; // Malloc failed
+        free(fileBuffer);
+        if(psFont->glyphs) free(psFont->glyphs);
+        if(psFont->pixelPool) free(psFont->pixelPool);
+        return false;
     }
 
-    // Zero out the glyph table initially
-    memset(psFont->glyphs, 0, numChars * sizeof(BDF_Glyph_t));
-
-    // State Machine Variables
+    // 3. PARSEO EN RAM (A la velocidad nativa del CPU)
     int32_t currentChar = -1;
     bool inBitmap = false;
     BDF_Glyph_t tempGlyph = {0};
 
-    // Read the file line by line
-    while (f_gets(line, sizeof(line), &file)) {
-        
-        // 1. Check if we are reading raw pixel data
-        if (inBitmap) {
-            if (strncmp(line, "ENDCHAR", 7) == 0) {
-                inBitmap = false;
-                currentChar = -1; // Reset for the next character
-                continue;
-            }
+    char *line = fileBuffer;
+    char *nextLine;
+
+    // Recorremos el buffer en RAM línea por línea
+    while (line < fileBuffer + fileSize) {
+        // Encontrar el final de la línea actual y cambiarlo por \0 para aislarla
+        nextLine = strchr(line, '\n');
+        if (nextLine) {
+            *nextLine = '\0'; 
+            nextLine++; // Apuntar al inicio de la siguiente línea
             
-            // If the character is within our target range, decode and store the pixels
-            if (currentChar >= startChar && currentChar <= endChar) {
-                // Determine how many bytes represent one row (width / 8, rounded up)
-                int bytesPerRow = (tempGlyph.width + 7) / 8;
-                
-                // Decode the hex string into bytes
-				int i = 0;
-                for (; i < bytesPerRow; i++) {
-                    uint8_t pixelByte = BDF_HexToByte(&line[i * 2]);
-                    psFont->pixelPool[psFont->poolSize++] = pixelByte;
-                }
+            // Limpiar posible retorno de carro (Windows \r)
+            if (nextLine > fileBuffer + 1 && *(nextLine - 2) == '\r') {
+                *(nextLine - 2) = '\0';
             }
-            continue;
+        } else {
+            nextLine = fileBuffer + fileSize; // Última línea
         }
 
-        // 2. Parse Character Properties
-		if (strncmp(line, "FONTBOUNDINGBOX", 15) == 0) {
-            char *p = &line[16];
-            strtol(p, &p, 10); // Skip global width
-            
-            // Capture the global font height (31)
-            psFont->yAdvance = strtol(p, &p, 10); 
-            
-            strtol(p, &p, 10); // Skip global X offset
-            
-            // Capture the global descent (-6)
-            psFont->globalYOffset = strtol(p, NULL, 10); 
+        // ==========================================
+        // TU LÓGICA DE PARSEO INTACTA (Pero ahora corre en RAM)
+        // ==========================================
+        
+        // Optimización rápida: checar la primera letra antes de hacer strncmp
+        char firstChar = line[0];
+
+        if (inBitmap) {
+            if (firstChar == 'E' && strncmp(line, "ENDCHAR", 7) == 0) {
+                inBitmap = false;
+                currentChar = -1;
+            } 
+            else if (currentChar >= startChar && currentChar <= endChar) {
+                int bytesPerRow = (tempGlyph.width + 7) / 8;
+				int i = 0;
+                for (; i < bytesPerRow; i++) {
+                    psFont->pixelPool[psFont->poolSize++] = BDF_HexToByte(&line[i * 2]);
+                }
+            }
+        } 
+        else if (firstChar == 'B' && strncmp(line, "BITMAP", 6) == 0) {
+            inBitmap = true;
+            if (currentChar >= startChar && currentChar <= endChar) {
+                uint32_t index = currentChar - startChar;
+                psFont->glyphs[index] = tempGlyph;
+                psFont->glyphs[index].bitmapOffset = psFont->poolSize;
+                psFont->glyphs[index].yOffset = -(tempGlyph.height + tempGlyph.yOffset);
+            }
         }
-        else if (strncmp(line, "ENCODING", 8) == 0) {
-            currentChar = atoi(&line[9]);
-        } 
-        else if (strncmp(line, "DWIDTH", 6) == 0) {
-            tempGlyph.advanceX = atoi(&line[7]);
-        } 
-        else if (strncmp(line, "BBX", 3) == 0) {
-            // BBX Width Height X-Offset Y-Offset
+        else if (firstChar == 'B' && strncmp(line, "BBX", 3) == 0) {
             char *p = &line[4];
             tempGlyph.width = strtol(p, &p, 10);
             tempGlyph.height = strtol(p, &p, 10);
             tempGlyph.xOffset = strtol(p, &p, 10);
             tempGlyph.yOffset = strtol(p, NULL, 10);
-        } 
-        else if (strncmp(line, "BITMAP", 6) == 0) {
-            inBitmap = true;
-            
-            // If it's a character we want, save its metadata to the lookup table
-            if (currentChar >= startChar && currentChar <= endChar) {
-                uint32_t index = currentChar - startChar;
-                
-                // Copy the parsed properties
-                psFont->glyphs[index] = tempGlyph;
-                
-                // Record where in the massive pixel pool this character's image begins
-                psFont->glyphs[index].bitmapOffset = psFont->poolSize;
-                
-                // In BDF, Y-offset is from the baseline UP. 
-                // For a top-down renderer, we invert it.
-                psFont->glyphs[index].yOffset = -(tempGlyph.height + tempGlyph.yOffset);
-            }
         }
+        else if (firstChar == 'E' && strncmp(line, "ENCODING", 8) == 0) {
+            currentChar = atoi(&line[9]);
+        }
+        else if (firstChar == 'D' && strncmp(line, "DWIDTH", 6) == 0) {
+            tempGlyph.advanceX = atoi(&line[7]);
+        }
+        else if (firstChar == 'F' && strncmp(line, "FONTBOUNDINGBOX", 15) == 0) {
+            char *p = &line[16];
+            strtol(p, &p, 10); 
+            psFont->yAdvance = strtol(p, &p, 10); 
+            strtol(p, &p, 10); 
+            psFont->globalYOffset = strtol(p, NULL, 10); 
+        }
+
+        // Avanzar a la siguiente línea
+        line = nextLine;
     }
 
-    f_close(&file);
+    // 4. LIBERAR EL BUFFER GIGANTE
+    free(fileBuffer);
     return true;
+}
+
+bool SDSPI_LoadEVEImage(gfx_Image *img, const char *pcFileName, uint32_t targetRamGAddr) {
+    FIL file;
+    UINT bytesRead;
+
+    // 1. Abrir archivo y obtener tamaño exacto
+    if (f_open(&file, pcFileName, FA_READ) != FR_OK) {
+        TIVA_LOGE("SDSPI", "No se encontro la imagen: %s", pcFileName);
+        return false;
+    }
+
+    uint32_t fileSize = f_size(&file);
+    
+    // 2. Asignar buffer en SDRAM exactamente del tamaño del PNG comprimido
+    uint8_t *sdramBuffer = (uint8_t *)malloc(fileSize);
+    if (!sdramBuffer) {
+        f_close(&file);
+        TIVA_LOGE("SDSPI", "Error de malloc en SDRAM para PNG");
+        return false;
+    }
+
+    // 3. Lectura de ráfaga (Burst read) desde la SD a la SDRAM
+    f_read(&file, sdramBuffer, fileSize, &bytesRead);
+    f_close(&file);
+
+    if (bytesRead != fileSize) {
+        free(sdramBuffer);
+        return false;
+    }
+
+    // 4. Transferir de la SDRAM al FT81x y decodificar en RAM_G
+    bool success = gfx_ImageLoadPNG(img, sdramBuffer, fileSize, targetRamGAddr);
+
+    // 5. ¡LIBERAR LA SDRAM! Ya no la necesitamos, EVE ya decodificó los píxeles.
+    free(sdramBuffer);
+
+    return success;
 }
 
 bool SDSPI_MountFilesystem(void) {

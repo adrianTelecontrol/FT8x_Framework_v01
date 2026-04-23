@@ -46,6 +46,7 @@ typedef enum {
 	FONT_FAM_INTER,
 	FONT_FAM_BEBAS,
 	FONT_FAM_MOMO,
+	FONT_FAM_MONO,	
 } gfx_FontFamily_e;
 
 typedef enum {

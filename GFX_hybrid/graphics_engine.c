@@ -41,7 +41,7 @@
 
 #define TRANSFER_SIZE 1024
 
-// #define GFX_ENABLE_INT
+#define GFX_ENABLE_INT
 // #define MEASURE_PERF_ENABLE
 //  #define MEASURE_PERF_ENABLE_FPS
 
@@ -565,6 +565,7 @@ void Gfx_render(void) {
   // g_ui32StartTxCycles = DWTGetCycleCounter();
 
   DisplayBitmap();
+  g_bIsBackgroundReady = true;
 #ifndef GFX_ENABLE_INT
   HAL_SPI_CS_Disable();
 #endif
@@ -826,7 +827,7 @@ void Gfx_RenderTask(void) {
     // 1. If the queue is populated, start the pumping process!
 	//UpdateDisplayWithGraphOverlay(&graphWidget);
     if (g_DMAQueue.count > 0) {
-      DisplayBitmap(); // Depending on your EVE config, call this if needed
+      //DisplayBitmap(); // Depending on your EVE config, call this if needed
       g_RenderEngine.state = RENDER_SEND_ROW;
 	  //g_bIsBackgroundReady = true;
       break;
@@ -1032,6 +1033,7 @@ void Gfx_RenderTask(void) {
           // Dejamos un pequeño margen de seguridad (ej. 10 trabajos) por si
           // ya había algo encolado previamente.
           if (bboxH * bboxW > 600 * 250) {
+          //if (true) {
             
             // 1. Levantamos la bandera global para el repintado masivo
             g_bRequestFullRepaint = true;
@@ -1045,10 +1047,10 @@ void Gfx_RenderTask(void) {
           } else {
             // Si cabe perfectamente en la cola, hacemos el dibujado rápido parcial
             gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bboxX,
-                                      bboxY, bboxW, bboxH);
+                                      bboxY - 20, bboxW, bboxH + 20);
 
-            Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX, bboxY, bboxW,
-                                     bboxH);
+            Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX, bboxY - 20, bboxW,
+                                     bboxH + 20);
           }
         }
         
@@ -1067,9 +1069,13 @@ void Gfx_RenderTask(void) {
     // Assert CS LOW
     HAL_SPI_CS_Enable();
 
+	Gfx_Start_SG_Transfer();
+
     // --- CPU Polling Transfer ---
     uint8_t *pData = (uint8_t *)job.pSrcSDRAM;
     uint32_t i = 0;
+
+	
     
     if (g_bIsQuadActive) {
       // Set bus to Write direction
@@ -1104,7 +1110,7 @@ void Gfx_RenderTask(void) {
     if (g_DMAQueue.count > 0) {
       g_RenderEngine.state = RENDER_SEND_ROW;
     } else {
-      g_RenderEngine.state = RENDER_IDLE;
+      g_RenderEngine.state = RENDER_FINISHED;
       
       if (!g_bPendingBottomHalf) {
           g_bIsBackgroundReady = true; 
@@ -1113,9 +1119,10 @@ void Gfx_RenderTask(void) {
     break;
   }
 
-  case RENDER_WAIT_DMA:
+  case RENDER_FINISHED:
     // Left empty/bypassed intentionally for CPU debugging.
     // Acts as a safety net back to IDLE.
+	//formManagerRenderEVEComponents();
     g_RenderEngine.state = RENDER_IDLE;
 
     break;
@@ -1132,4 +1139,3 @@ void Gfx_RenderTask(void) {
     break;
   }
 }
-

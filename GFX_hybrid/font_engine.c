@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "helpers.h"
 #include "sdspi_hal.h"
@@ -278,6 +279,9 @@ int8_t gfx_fontLoadDynamic(gfx_FontFamily_e family, gfx_FontWeight_e weight,
   case FONT_FAM_MOMO:
     familyStr = "MOMO";
     break;
+  case FONT_FAM_MONO:
+    familyStr = "MONO";
+    break;
   }
 
   switch (weight) {
@@ -323,6 +327,7 @@ int8_t gfx_fontLoadDynamic(gfx_FontFamily_e family, gfx_FontWeight_e weight,
     g_FontCache[freeSlot].weight = weight;
     g_FontCache[freeSlot].size = size;
     g_FontCache[freeSlot].isLoaded = true;
+
     return freeSlot; // Return the new Font ID
   }
 

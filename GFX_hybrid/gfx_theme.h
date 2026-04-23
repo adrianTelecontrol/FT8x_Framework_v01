@@ -26,6 +26,7 @@ typedef struct {
     int8_t body;                    // Texto estándar para botones (ej. 24px)
     int8_t caption;                 // Texto pequeño (ej. 18px)
     int8_t mono;                    // Datos dinámicos (siempre monoespaciada)
+	int8_t mono_bold;
 } gfx_Typography_t;
 
 typedef struct {
@@ -39,14 +40,19 @@ typedef enum {
     TYPO_H2,
     TYPO_BODY,
     TYPO_CAPTION,
-    TYPO_MONO
+    TYPO_MONO,
+	TYPO_MONO_BOLD,
 } gfx_TypoStyle_e;
 
 extern gfx_Theme_t *g_pCurrentTheme;
 
 int8_t Theme_ResolveFontId(gfx_TypoStyle_e typo);
-void Theme_Init(void);
+void Theme_Init(bool isDark);
 void Theme_SetMode(bool isDark);
 void Theme_SetFontFamily(gfx_FontFamily_e newFamily);
+void Theme_SetFontFamilyHigh(gfx_FontFamily_e newFamily);
+void Theme_SetFontFamilyLow(gfx_FontFamily_e newFamily);
+void Theme_SetModeLow(bool isDark);
+void Theme_SetModeHigh(bool isDark);
 
 #endif // GFX_THEME_H

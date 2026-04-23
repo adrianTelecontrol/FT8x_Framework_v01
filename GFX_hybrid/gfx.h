@@ -15,10 +15,15 @@
 // Darkens any RGB565 color by 50% safely and instantly
 #define DARKEN_COLOR(c) (((c) & 0xF7DE) >> 1)
 
+#define LIGHTEN_COLOR(c) ((c) - (((c) & 0xE79C) >> 2) + 0x39E7)
+
 typedef enum {
 	STYLE_DEFAULT = 0,
 	STYLE_PRIMARY,
 	STYLE_SECONDARY,
+	STYLE_TEXT_MAIN,
+	STYLE_TEXT_MUTED,
+	STYLE_TEXT_MAIN_BOLD,
 	STYLE_DANGER,
 	STYLE_SUCCESS
 } gfx_WidgetStyle_e;
@@ -31,6 +36,7 @@ typedef enum {
   WD_TYPE_SLIDER,
   WD_TYPE_GRAPH,
   WD_TYPE_MULTIGRAPH,
+  WD_TYPE_IMAGE,
 } widget_type_e;
 
 typedef struct RegionTouchObject {
@@ -76,9 +82,11 @@ typedef struct Rectangle {
   uint16_t round;
   uint32_t color;
   const char *name;
+  uint16_t borderWidth;
 
   bool bIsDirty;
 } gfx_Rectangle;
+
 
 typedef enum {
   BTN_STATE_NORMAL = 0,
@@ -120,6 +128,7 @@ typedef struct {
     gfx_TypoStyle_e typo;     // Resolves to g_pCurrentTheme->fonts
     gfx_Align_e alignment;
     
+	bool isVisible;
     bool bIsDirty;
 } gfx_Label;
 
@@ -204,6 +213,15 @@ typedef struct {
     bool bIsDirty;       
 	bool bEVEDirty;
 } gfx_MultiGraph;
+
+typedef struct {
+    char *name;
+    Position pos;
+    Size size;            // Se llenará automáticamente al decodificar el PNG
+    uint8_t scale;        // 1 = Tamaño original, 2 = Doble, etc.
+    uint32_t ramgAddress; // Dirección en RAM_G (Debe ser > 768000)
+    bool bIsDirty;
+} gfx_Image;
 
 typedef struct {
   widget_type_e eWidgetType;
@@ -294,6 +312,10 @@ void gfx_fillGradientRoundRect(pixel16_t *pBuf, int16_t x, int16_t y, int16_t w,
 
 void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn);
 
+void onGenericBtnPressed(gfx_Button *btn);
+
+void onGenericBtnRelease(gfx_Button *btn);
+
 void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb);
 
 void gfx_drawRectangle(pixel16_t *pBuf, gfx_Rectangle *rect);
@@ -315,4 +337,8 @@ void gfx_MultiGraphAddData(gfx_MultiGraph *graph, uint8_t traceIndex, int16_t ne
 void gfx_drawMultiGraph(pixel16_t *pBuf, gfx_MultiGraph *graph);
 
 void gfx_MultigraphRenderEVEComponents(gfx_MultiGraph *graph);
+
+void gfx_ImageRenderEVEComponents(gfx_Image *img);
+
+bool gfx_ImageLoadPNG(gfx_Image *img, const uint8_t *pngData, uint32_t dataSize, uint32_t targetRamGAddrr);
 #endif // GFX_H

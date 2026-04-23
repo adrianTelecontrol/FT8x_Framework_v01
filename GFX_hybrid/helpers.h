@@ -63,6 +63,18 @@ inline uint32_t GetExecTimeMs(void)
 	
 }
 
+inline uint32_t GetExecTimeUs(void)
+{
+    const uint32_t CLOCK_PERIOD = g_ui32SysClock / 1E6;                        
+    /* 5. Calculate Microseconds (Integer Math for UARTprintf) */              
+    /* Assuming 120 MHz Clock: 120 cycles = 1 us */                            
+    return ( DWTGetCycleCounter() / CLOCK_PERIOD );                               
+    // uint32_t us_frac =                                                         
+    //     (duration % CLOCK_PERIOD) * 100 / CLOCK_PERIOD; /* 2 decimal places */ 
+    // g_ui32ExecMs = us_whole / 1000;                                       
+	
+}
+
 inline void StartCycleCounter(void) {
     DWTInitCycleCounter();
     DWTResetCycleCounter();

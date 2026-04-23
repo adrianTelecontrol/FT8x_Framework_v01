@@ -99,6 +99,7 @@ void ConfigureUART(void) {
   UARTStdioConfig(0, 115200, g_ui32SysClock);
 }
 
+
 int main(void) {
 
   // Enable all the ports
@@ -123,18 +124,18 @@ int main(void) {
   HAL_SPI_Init();
   TIVA_LOGI(TASK_NAME, "SPI set up successfully!");
   TIVA_LOGI(TASK_NAME, "Initial FT81x state...");
-  SysCtlDelay(MS_2_CLK(500));
+  //SysCtlDelay(MS_2_CLK(500));
   TIVA_LOGI(TASK_NAME, "Awaking screen...");
   API_WakeUpScreen();
   TIVA_LOGI(TASK_NAME, "Screen is awake!");
-  SysCtlDelay(MS_2_CLK(1000));
+  SysCtlDelay(MS_2_CLK(200));
   TIVA_LOGI(TASK_NAME, "Running Quick FT81x SPI verification... ");
   QuickSanityCheck();
 
   TIVA_LOGI(TASK_NAME, "Clearing the screen to 0x%x color", EVE_PINK);
   EVE_MemWrite8(REG_PWM_DUTY, 128);
   EVE_MemWrite8(REG_CSPREAD, 0);
-  gfx_start(0xFF52EE);
+  gfx_start(0x00000000);
   gfx_end();
 
   //EVE_PlayIntroVideo();
@@ -150,8 +151,18 @@ int main(void) {
 
   StartCycleCounter(); // The DWT will be our clock source
 
-  Theme_Init();
-  Theme_SetMode(0);
+  Theme_Init(true);
+  Theme_SetModeHigh(true);
+  // Play fullscreen with no-tear and audio
+  // EVE_VideoResult_t eResult = EVE_Video_Play(
+  //     "s_hd2.avi",
+  //     OPT_FULLSCREEN | OPT_NOTEAR | OPT_MEDIAFIFO
+  // );
+  
+  // if (eResult != EVE_VIDEO_OK) {
+  //     TIVA_LOGE("MAIN", "Video failed: %s", EVE_Video_ResultStr(eResult));
+  // }
+  Theme_SetModeLow(true);
 
   formManagerInit();
 
@@ -162,17 +173,17 @@ int main(void) {
   formManagerComposite(g_pDrawingBuffer);
 
   Gfx_render();
+  formManagerRenderEVEComponents();
 
   gestureEngineInit();
 
-  Event_Post(EVT_CMD_FULL_REPAINT, 0);
+  //Event_Post(EVT_CMD_FULL_REPAINT, 0);
   
+  Event_Post(EVT_CMD_START_BOOT_SEQ, 0);
   while (1) {
 	Gfx_RenderTask();
 
-	formManagerRenderEVEComponents();
-
-    gestureEngineTask();
+    //gestureEngineTask();
 
 	controlSimulatiorTask();
 

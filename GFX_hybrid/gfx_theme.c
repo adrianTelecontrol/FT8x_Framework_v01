@@ -4,8 +4,13 @@
 #include "event_engine.h"
 #include "gfx_theme.h"
 #include "gfx_colors.h"
+#include "font_engine.h"
+
+#include "helpers.h"
 
 gfx_Theme_t *g_pCurrentTheme = NULL;
+
+static const char *TASK_NAME = "gfx_theme";
 
 // ---------------------------------------------------------
 // THEME 1: INDUSTRIAL LIGHT MODE
@@ -49,6 +54,29 @@ gfx_Theme_t g_ThemeSoftLight = {
     .palette.success    = COLOR_SOFT_GREEN     // Estados OK
 };
 
+gfx_Theme_t g_TelecontrolDarkTheme = {
+    .palette = {
+        .background = 0x0841, // Original: #0a0b0d (Negro profundo industrial)
+        .surface    = 0x10C4, // Original: #161b22 (Fondo de paneles/tarjetas)
+        .primary    = 0xF800, // Original: #FF0000 (Rojo corporativo Telecontrol)
+        .secondary  = 0x5D3F, // Original: #58a6ff (Azul claro para información)
+        .textMain   = 0xFFFF, // Original: #FFFFFF (Blanco puro, máxima legibilidad HMI)
+        .textMuted  = 0x8CB3, // Original: #8b949e (Gris azulado para unidades y etiquetas secundarias)
+        .border     = 0x31A7, // Original: #30363d (Gris medio para bordes de botones y separadores)
+        .danger     = 0xF800, // Original: #FF0000 (Mismo que el primary por reglas de hardware de alarmas)
+        .success    = 0x268C  // Original: #23d160 (Verde estilo LED de alta intensidad)
+    },
+    .fonts = {
+        .currentFamily = FONT_FAM_MONO, // O el nombre de tu fuente compilada principal
+        .h1 = FONT_SIZE_38,      // Títulos de pantalla (ej. "PARO DE EMERGENCIA")
+        .h2 = FONT_SIZE_28,      // Subtítulos de grupo y botones principales
+        .body = FONT_SIZE_24,    // Texto normal de navegación y botones estándar
+        .caption = FONT_SIZE_18, // Pequeñas etiquetas (ej. "Corriente Nominal [A]")
+        .mono = FONT_SIZE_18,     // Tipografía JetBrains para los indicadores en tiempo real (ej. 100.30 C)
+		.mono_bold = FONT_SIZE_18,
+    }
+};
+
 static void onChangeThemeEvent(uint32_t arg) {
 	gfx_FontFamily_e activeFamily = g_pCurrentTheme->fonts.currentFamily;
 
@@ -80,11 +108,19 @@ int8_t gfx_ResolveFontId(gfx_TypoStyle_e typo) {
 // ---------------------------------------------------------
 // INITIALIZATION
 // ---------------------------------------------------------
-void Theme_Init(void) {
-    g_pCurrentTheme = &g_ThemeLight; // Tema por defecto
-    
+void Theme_Init(bool isDark) {
+    gfx_FontFamily_e activeFamily = g_pCurrentTheme->fonts.currentFamily;
+	
+
+    if (isDark) {
+        // g_pCurrentTheme = &g_ThemeDark;
+        g_pCurrentTheme = &g_TelecontrolDarkTheme;
+    } else {
+        g_pCurrentTheme = &g_ThemeLight;
+    }
     // Cargar la familia de fuentes por defecto al arrancar
-    Theme_SetFontFamily(FONT_FAM_INTER);
+    // Theme_SetFontFamily(FONT_FAM_INTER);
+    //Theme_SetFontFamilyLow(FONT_FAM_INTER);
 
 	Event_Subscribe(EVT_CMD_CHANGE_THEME, onChangeThemeEvent);
 }
@@ -93,13 +129,52 @@ void Theme_SetMode(bool isDark) {
     gfx_FontFamily_e activeFamily = g_pCurrentTheme->fonts.currentFamily;
 
     if (isDark) {
-        g_pCurrentTheme = &g_ThemeDark;
+        //g_pCurrentTheme = &g_ThemeDark;
+        g_pCurrentTheme = &g_TelecontrolDarkTheme;
     } else {
         g_pCurrentTheme = &g_ThemeLight;
     }
 
     // Transferir la familia activa al nuevo tema y recargar los punteros
-    Theme_SetFontFamily(activeFamily);
+    Theme_SetFontFamilyLow(activeFamily);
+}
+
+void Theme_SetModeLow(bool isDark) {
+    gfx_FontFamily_e activeFamily = g_pCurrentTheme->fonts.currentFamily;
+
+    if (isDark) {
+        //g_pCurrentTheme = &g_ThemeDark;
+        g_pCurrentTheme = &g_TelecontrolDarkTheme;
+    } else {
+        g_pCurrentTheme = &g_ThemeLight;
+    }
+
+    // Transferir la familia activa al nuevo tema y recargar los punteros
+    Theme_SetFontFamilyLow(activeFamily);
+}
+
+void Theme_SetModeHigh(bool isDark) {
+    gfx_FontFamily_e activeFamily = g_pCurrentTheme->fonts.currentFamily;
+
+    if (isDark) {
+        // g_pCurrentTheme = &g_ThemeDark;
+        g_pCurrentTheme = &g_TelecontrolDarkTheme;
+    } else {
+        g_pCurrentTheme = &g_ThemeLight;
+    }
+
+    // Transferir la familia activa al nuevo tema y recargar los punteros
+    Theme_SetFontFamilyHigh(activeFamily);
+}
+
+void Theme_PreloadFonts(void)
+{
+    gfx_fontLoadDynamic(FONT_FAM_INTER, FONT_WEIGHT_BOLD,    FONT_SIZE_48);
+    gfx_fontLoadDynamic(FONT_FAM_INTER, FONT_WEIGHT_BOLD,    FONT_SIZE_32);
+    gfx_fontLoadDynamic(FONT_FAM_INTER, FONT_WEIGHT_REGULAR, FONT_SIZE_24);
+    gfx_fontLoadDynamic(FONT_FAM_INTER, FONT_WEIGHT_REGULAR, FONT_SIZE_18);
+
+    TIVA_LOGI(TASK_NAME, "Font pre-load complete.");
 }
 
 void Theme_SetFontFamily(gfx_FontFamily_e newFamily) {
@@ -108,13 +183,45 @@ void Theme_SetFontFamily(gfx_FontFamily_e newFamily) {
     g_pCurrentTheme->fonts.currentFamily = newFamily;
 
     // Cargar dinámicamente desde la SD y guardar los IDs en el tema
-    g_pCurrentTheme->fonts.h1      = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, FONT_SIZE_48);
-    g_pCurrentTheme->fonts.h2      = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, FONT_SIZE_32);
-    g_pCurrentTheme->fonts.body    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, FONT_SIZE_24);
-    g_pCurrentTheme->fonts.caption = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, FONT_SIZE_18);
+    g_pCurrentTheme->fonts.h1      = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, g_pCurrentTheme->fonts.h1);
+    g_pCurrentTheme->fonts.h2      = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, g_pCurrentTheme->fonts.h2);
+    g_pCurrentTheme->fonts.body    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, g_pCurrentTheme->fonts.body);
+    g_pCurrentTheme->fonts.caption = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, g_pCurrentTheme->fonts.caption);
+    
+    g_pCurrentTheme->fonts.mono    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, g_pCurrentTheme->fonts.mono); 
+    g_pCurrentTheme->fonts.mono_bold    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, g_pCurrentTheme->fonts.mono_bold); 
+}
+
+void Theme_SetFontFamilyHigh(gfx_FontFamily_e newFamily) {
+    if (!g_pCurrentTheme) return;
+
+    g_pCurrentTheme->fonts.currentFamily = newFamily;
+
+    // Cargar dinámicamente desde la SD y guardar los IDs en el tema
+    g_pCurrentTheme->fonts.h1      = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, g_pCurrentTheme->fonts.h1);
+    // g_pCurrentTheme->fonts.h2      = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, FONT_SIZE_32);
+    // g_pCurrentTheme->fonts.body    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, FONT_SIZE_24);
+    // g_pCurrentTheme->fonts.caption = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, FONT_SIZE_18);
+    
+    // // Nota: La fuente mono suele mantenerse constante sin importar el tema general
+    // // para asegurar que los números no salten.
+    g_pCurrentTheme->fonts.mono    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, g_pCurrentTheme->fonts.mono); 
+    g_pCurrentTheme->fonts.mono_bold    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, g_pCurrentTheme->fonts.mono_bold); 
+}
+
+void Theme_SetFontFamilyLow(gfx_FontFamily_e newFamily) {
+    if (!g_pCurrentTheme) return;
+
+    g_pCurrentTheme->fonts.currentFamily = newFamily;
+
+    // Cargar dinámicamente desde la SD y guardar los IDs en el tema
+    //g_pCurrentTheme->fonts.h1      = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, FONT_SIZE_48);
+    g_pCurrentTheme->fonts.h2      = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_BOLD, g_pCurrentTheme->fonts.h2);
+    g_pCurrentTheme->fonts.body    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, g_pCurrentTheme->fonts.body);
+    g_pCurrentTheme->fonts.caption = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, g_pCurrentTheme->fonts.caption);
     
     // Nota: La fuente mono suele mantenerse constante sin importar el tema general
     // para asegurar que los números no salten.
-    g_pCurrentTheme->fonts.mono    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, FONT_SIZE_24); 
+    // g_pCurrentTheme->fonts.mono    = gfx_fontLoadDynamic(newFamily, FONT_WEIGHT_REGULAR, FONT_SIZE_24); 
 }
 

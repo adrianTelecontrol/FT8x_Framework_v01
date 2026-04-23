@@ -14,82 +14,103 @@
 
 #include "navigation_widgets.h"
 
-gfx_GenericWidget btnPrevContainer;
-gfx_GenericWidget btnNextContainer;
+gfx_GenericWidget btnInicioWidget;
+gfx_GenericWidget btnConfigWidget;
+gfx_GenericWidget btnGraphWidget;
 
-gfx_Button btnPrevWidget;
-gfx_Button btnNextWidget;
+gfx_Button btnInicioData;
+gfx_Button btnConfigData;
+gfx_Button btnGraphData;
 
-void onPushButtonPressed(gfx_Button *btn)
-{
+// ==========================================
+// Callbacks (Botones)
+// ==========================================
+static void onGenericBtnPressed(gfx_Button *btn) {
     btn->state = BTN_STATE_PRESSED;
     btn->bIsDirty = true;
 }
 
-void onPushButtonRelease(gfx_Button *btn)
-{
+static void onInicioBtnReleased(gfx_Button *btn) {
+	btnConfigData.style = STYLE_SECONDARY;
+	btnConfigData.state = BTN_STATE_NORMAL;
+	btnConfigData.bIsDirty = true;
+	btnGraphData.style = STYLE_SECONDARY;
+	btnGraphData.state = BTN_STATE_NORMAL;
+	btnGraphData.bIsDirty = true;
+
     btn->state = BTN_STATE_NORMAL;
+	btn->style = STYLE_DANGER;
     btn->bIsDirty = true;
+    //Event_Post(EVT_CMD_NAV_HOME, 0); // Ejemplo de evento de navegación
 }
 
-void onPrevButtonRelease(gfx_Button *btn) {
-	onPushButtonRelease(btn);
-
-	Event_Post(EVT_SYS_PREV_FORM, 0);
+static void onConfigBtnReleased(gfx_Button *btn) {
+	btnInicioData.style = STYLE_SECONDARY;
+	btnInicioData.state = BTN_STATE_NORMAL;
+	btnInicioData.bIsDirty = true;
+	btnGraphData.style = STYLE_SECONDARY;
+	btnGraphData.state = BTN_STATE_NORMAL;
+	btnGraphData.bIsDirty = true;
+	
+    btn->state = BTN_STATE_NORMAL;
+	btn->style = STYLE_DANGER;
+    btn->bIsDirty = true;
+    //Event_Post(EVT_CMD_NAV_CONFIG, 0);
 }
 
-void onNextButtonRelease(gfx_Button *btn) {
-	onPushButtonRelease(btn);
+static void onGraphBtnReleased(gfx_Button *btn) {
+	btnConfigData.style = STYLE_SECONDARY;
+	btnConfigData.state = BTN_STATE_NORMAL;
+	btnConfigData.bIsDirty = true;
+	btnInicioData.style = STYLE_SECONDARY;
+	btnInicioData.state = BTN_STATE_NORMAL;
+	btnInicioData.bIsDirty = true;
 
-	Event_Post(EVT_SYS_NEXT_FORM, 0);
+    btn->state = BTN_STATE_NORMAL;
+	btn->style = STYLE_DANGER;
+    btn->bIsDirty = true;
+    //Event_Post(EVT_CMD_NAV_GRAPH, 0);
 }
 
 void initNavigationWidgets(void) {
-	
-	btnPrevWidget = (gfx_Button) {
-		.label = "<",
-		.size.width = 70,
-		.size.height = 35,
-		.pos.x = 20,
-		.pos.y = 5,
-		.radius = 10,
-		.name = "prevBtn",
-		.borderWidth = 0,
-		.state = BTN_STATE_NORMAL,
-		.style = STYLE_PRIMARY,
-		.typo = TYPO_BODY,
-		.onPressed = onPushButtonPressed,
-		.onRelease = onPrevButtonRelease,
-	};
-	btnPrevContainer.eWidgetType = WD_TYPE_BUTTON;
-	btnPrevContainer.pvWidget = (void *)&btnPrevWidget;
-	gfx_initRegTouch(btnPrevContainer.pvWidget, WD_TYPE_BUTTON);
+    uint16_t btnWidth = 260;
+    uint16_t btnHeight = 60;
+    uint16_t btnY = 425;
 
-	btnNextWidget = (gfx_Button) {
-		.label = ">",
-		.size.width = 70,
-		.size.height = 35,
-		.pos.x = 100,
-		.pos.y = 5,
-		.radius = 10,
-		.name = "nextBtn",
-		.borderWidth = 0,
-		.state = BTN_STATE_NORMAL,
-		.style = STYLE_PRIMARY,
-		.typo = TYPO_BODY,
-		.onPressed = onPushButtonPressed,
-		.onRelease = onNextButtonRelease,
-	};
-	btnNextContainer.eWidgetType = WD_TYPE_BUTTON;
-	btnNextContainer.pvWidget = (void *)&btnNextWidget;
-	gfx_initRegTouch(btnNextContainer.pvWidget, WD_TYPE_BUTTON);
+    btnInicioData = (gfx_Button){
+        .name = "btnIni", .label = "Inicio", .size.width = btnWidth, .size.height = btnHeight,
+        .pos.x = 5, .pos.y = btnY, .oldPos.x = 65, .oldPos.y = btnY,
+        .typo = TYPO_H2, .style = STYLE_PRIMARY, .borderWidth = 0, .radius = 5,
+        .state = BTN_STATE_NORMAL, .onPressed = onGenericBtnPressed, .onRelease = onInicioBtnReleased
+    };
+    btnInicioWidget.eWidgetType = WD_TYPE_BUTTON; btnInicioWidget.pvWidget = (void *)&btnInicioData;
+    gfx_initRegTouch(btnInicioWidget.pvWidget, WD_TYPE_BUTTON);
+
+    btnConfigData = (gfx_Button){
+        .name = "btnCfg", .label = "Config", .size.width = btnWidth, .size.height = btnHeight,
+        .pos.x = btnWidth + 10, .pos.y = btnY, .oldPos.x = 310, .oldPos.y = btnY,
+        .typo = TYPO_H2, .style = STYLE_SECONDARY, .borderWidth = 0, .radius = 5,
+        .state = BTN_STATE_NORMAL, .onPressed = onGenericBtnPressed, .onRelease = onConfigBtnReleased
+    };
+    btnConfigWidget.eWidgetType = WD_TYPE_BUTTON; btnConfigWidget.pvWidget = (void *)&btnConfigData;
+    gfx_initRegTouch(btnConfigWidget.pvWidget, WD_TYPE_BUTTON);
+
+    btnGraphData = (gfx_Button){
+        .name = "btnGraph", .label = "Graph", .size.width = btnWidth, .size.height = btnHeight,
+        .pos.x = btnWidth * 2 + 15, .pos.y = btnY, .oldPos.x = 555, .oldPos.y = btnY,
+        .typo = TYPO_H2, .style = STYLE_SECONDARY, .borderWidth = 0, .radius = 5,
+        .state = BTN_STATE_NORMAL, .onPressed = onGenericBtnPressed, .onRelease = onGraphBtnReleased
+    };
+    btnGraphWidget.eWidgetType = WD_TYPE_BUTTON; btnGraphWidget.pvWidget = (void *)&btnGraphData;
+    gfx_initRegTouch(btnGraphWidget.pvWidget, WD_TYPE_BUTTON);
 }
 
 void useNavigationButtons(gfx_Canvas* canvas) {
 	if(canvas == NULL) return;
 
-	canvasInsertAtTop(&canvas->psWidgets, &btnPrevContainer);
-	canvasInsertAtTop(&canvas->psWidgets, &btnNextContainer);
+    canvasInsertAtTop(&canvas->psWidgets, &btnInicioWidget);
+    canvasInsertAtTop(&canvas->psWidgets, &btnConfigWidget);
+    canvasInsertAtTop(&canvas->psWidgets, &btnGraphWidget);
 }
 
 

@@ -11,6 +11,8 @@
 #include "forms/graph_form.h"
 #include "forms/home_form.h"
 #include "forms/navigation_widgets.h"
+#include "forms/boot_form.h"
+#include "forms/dashboard_form.h"
 
 #include "forms_manager.h"
 
@@ -69,6 +71,13 @@ static void formManagerOnPrevFormEvent(uint32_t arg) {
   g_bIsBackgroundReady = false;
 
   Event_Post(EVT_CMD_FULL_REPAINT, 0);
+}
+
+static void onShowHomeFormEvent(uint32_t arg) {
+	g_psCurrentForm = g_psForms[g_i16DashboardFormID];
+  	g_bIsBackgroundReady = false;
+
+  	Event_Post(EVT_CMD_FULL_REPAINT, 0);
 }
 
 bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture) {
@@ -170,12 +179,16 @@ void formManagerInit(void) {
   initNavigationWidgets();
   initHomeForm();
   initGraphForm();
+  initBootForm();
+  initDashboardForm();
   Event_Subscribe(EVT_SYS_NEXT_FORM,
                   (EventHandler_fn)formManagerOnNextFormEvent);
   Event_Subscribe(EVT_SYS_PREV_FORM,
                   (EventHandler_fn)formManagerOnPrevFormEvent);
+  Event_Subscribe(EVT_SYS_SHOW_HOME_FORM, (EventHandler_fn)onShowHomeFormEvent);
 
-  g_psCurrentForm = g_psForms[g_i16GraphFormID];
+  g_psCurrentForm = g_psForms[g_i16BootFormID];
+  // g_psCurrentForm = g_psForms[g_i16GraphFormID];
 }
 
 void formManagerComposite(pixel16_t *psPixelBuffer) {
@@ -203,6 +216,8 @@ void formManagerRenderEVEComponents(void) {
 			// canvas looking for more dirty widgets
 			break;
 		}
+	} else if(iter->sWidget.eWidgetType == WD_TYPE_IMAGE) { 
+		break;
 	}
 
     iter = iter->psNext;
@@ -255,7 +270,14 @@ void formManagerRenderEVEComponents(void) {
     		API_LIB_AwaitCoProEmpty();
     		API_LIB_BeginCoProList();
 		}
-    }
+    } else if(iter->sWidget.eWidgetType == WD_TYPE_IMAGE) { 
+		gfx_Image *img = (gfx_Image *)iter->sWidget.pvWidget;
+		gfx_ImageRenderEVEComponents(img);
+
+    	API_LIB_EndCoProList();
+    	API_LIB_AwaitCoProEmpty();
+    	API_LIB_BeginCoProList();
+	}
 
     iter = iter->psNext;
   }

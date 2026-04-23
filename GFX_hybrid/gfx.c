@@ -852,11 +852,12 @@ void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
         
         // Resolver el ID de la fuente según la jerarquía solicitada
         switch (btn->typo) {
-            case TYPO_H1:      fontId = g_pCurrentTheme->fonts.h1; break;
-            case TYPO_H2:      fontId = g_pCurrentTheme->fonts.h2; break;
-            case TYPO_BODY:    fontId = g_pCurrentTheme->fonts.body; break;
-            case TYPO_CAPTION: fontId = g_pCurrentTheme->fonts.caption; break;
-            case TYPO_MONO:    fontId = g_pCurrentTheme->fonts.mono; break;
+            case TYPO_H1:      		fontId = g_pCurrentTheme->fonts.h1; break;
+            case TYPO_H2:      		fontId = g_pCurrentTheme->fonts.h2; break;
+            case TYPO_BODY:    		fontId = g_pCurrentTheme->fonts.body; break;
+            case TYPO_CAPTION: 		fontId = g_pCurrentTheme->fonts.caption; break;
+            case TYPO_MONO:    		fontId = g_pCurrentTheme->fonts.mono; break;
+			case TYPO_MONO_BOLD:	fontId = g_pCurrentTheme->fonts.mono_bold; break; 
         }
         
         // Si el motor SD logró cargar la fuente, la dibujamos
@@ -869,8 +870,18 @@ void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
     }
 }
 
+void onGenericBtnPressed(gfx_Button *btn) {
+    btn->state = BTN_STATE_PRESSED;
+    btn->bIsDirty = true;
+}
+
+void onGenericBtnRelease(gfx_Button *btn) {
+    btn->state = BTN_STATE_NORMAL;
+    btn->bIsDirty = true;
+}
+
 void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb) {
-    if (!pBuf || !lb || !lb->text || !g_pCurrentTheme) return;
+    if (!pBuf || !lb || !lb->text || !g_pCurrentTheme || !lb->isVisible) return;
 
     // 1. Resolve Semantic Color from the Theme Palette
     // Labels default to textMain, but can be overridden (e.g., a Red DANGER label)
@@ -886,9 +897,15 @@ void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb) {
         case STYLE_SUCCESS:
             activeColor = g_pCurrentTheme->palette.success;
             break;
+		case STYLE_TEXT_MAIN:
+			activeColor = g_pCurrentTheme->palette.textMain;
+			break;
+		case STYLE_TEXT_MUTED:
+			activeColor = g_pCurrentTheme->palette.textMuted;
+			break;
         case STYLE_SECONDARY:
             // Great for subtext/captions that shouldn't distract the user
-            activeColor = g_pCurrentTheme->palette.textMuted; 
+            activeColor = g_pCurrentTheme->palette.secondary; 
             break;
         case STYLE_DEFAULT:
         default:
@@ -904,6 +921,7 @@ void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb) {
         case TYPO_BODY:    fontId = g_pCurrentTheme->fonts.body; break;
         case TYPO_CAPTION: fontId = g_pCurrentTheme->fonts.caption; break;
         case TYPO_MONO:    fontId = g_pCurrentTheme->fonts.mono; break;
+        case TYPO_MONO_BOLD:    fontId = g_pCurrentTheme->fonts.mono_bold; break;
     }
 
     // 3. Render the string if the font was successfully loaded from the SD card
@@ -914,144 +932,19 @@ void gfx_drawLabel(pixel16_t *pBuf, gfx_Label *lb) {
 
 void gfx_drawRectangle(pixel16_t *pBuf, gfx_Rectangle *rect)
 {
-	gfx_fillRect(pBuf, rect->pos.x, rect->pos.y, rect->dim.width, rect->dim.height, rect->color);
+	//gfx_fillRect(pBuf, rect->pos.x, rect->pos.y, rect->dim.width, rect->dim.height, rect->color);
+	gfx_fillRoundRect(pBuf, rect->pos.x, rect->pos.y, rect->dim.width, rect->dim.height, rect->round, rect->color);
+
+    if (rect->borderWidth > 0) {
+    	int16_t footprintX = rect->pos.x - rect->borderWidth;
+    	int16_t footprintY = rect->pos.y - rect->borderWidth;
+    	int16_t footprintW = rect->dim.width + (rect->borderWidth * 2);
+    	int16_t footprintH = rect->dim.height + (rect->borderWidth * 2);
+    	int16_t r_outer = rect->round + rect->borderWidth;
+        gfx_drawRoundOutline(pBuf, footprintX, footprintY, footprintW, footprintH, 
+                             r_outer, rect->borderWidth, LIGHTEN_COLOR(rect->color));
+    }
 }
-/*
-void gfx_drawSlider(pixel16_t *pBuf, gfx_Slider *sl) {
-    if (!pBuf || !sl || !g_pCurrentTheme) return;
-
-    // 1. Resolve colors (Replace with your actual theme macros)
-    uint16_t trackBgColor = g_pCurrentTheme->palette.secondary;      // Dark Gray
-    uint16_t trackActiveColor = g_pCurrentTheme->palette.success;  // Green/Primary
-    uint16_t knobColor = g_pCurrentTheme->palette.primary;         // White
-
-    // Protect mathematical limits
-    if (sl->currentValue < sl->minValue) sl->currentValue = sl->minValue;
-    if (sl->currentValue > sl->maxValue) sl->currentValue = sl->maxValue;
-
-    // =========================================================
-    // DYNAMIC RADIUS & GEOMETRY
-    // =========================================================
-    // Automatically calculate radius based on height (with 2px padding)
-    // uint16_t dynamicKnobRadius = (sl->size.height / 2) - 2;
-    uint16_t dynamicKnobRadius = sl->size.height * 1.15;
-	sl->knobRadius = dynamicKnobRadius;
-
-    int16_t trackY = sl->pos.y + (sl->size.height / 2) - (sl->size.height / 2);
-
-    // The knob's center must stay inside the track. 
-    // It can only travel the total width MINUS its own diameter.
-    int16_t pixelRange = sl->size.width - (dynamicKnobRadius * 2);
-    int16_t valueRange = sl->maxValue - sl->minValue;
-
-    // Calculate where the center of the knob should be
-    int16_t activeOffset = ((sl->currentValue - sl->minValue) * pixelRange) / valueRange;
-    int16_t knobCenterX = sl->pos.x + 1.5 * dynamicKnobRadius + 2 + activeOffset;
-
-    // =========================================================
-    // DRAWING PIPELINE
-    // =========================================================
-    // 1. Draw Background Track (Spans the ENTIRE widget width)
-    gfx_fillRoundRect(pBuf, 
-                      sl->pos.x, trackY, 
-                      sl->size.width, sl->size.height, 
-                      sl->trackHeight / 2, trackBgColor);
-
-    // 2. Draw Active Track (From left edge up to the knob's center)
-    int16_t activeTrackWidth = knobCenterX - sl->pos.x;
-    if (sl->currentValue != 0) {
-        gfx_fillRoundRect(pBuf, 
-                          sl->pos.x, trackY, 
-                          activeTrackWidth, sl->size.height, 
-                          sl->trackHeight / 2, trackActiveColor);
-    }
-
-    // 3. Draw the Knob
-    int16_t knobCenterY = sl->pos.y + (sl->size.height / 2);
-    gfx_fillCircle(pBuf, knobCenterX, knobCenterY, dynamicKnobRadius, knobColor);
-
-    // Clear flag
-    sl->bIsDirty = false;
-} */
-
-/*
-void gfx_drawSlider(pixel16_t *pBuf, gfx_Slider *sl) {
-    if (!pBuf || !sl || !g_pCurrentTheme) return;
-
-    // 1. Resolver colores base del tema
-    uint16_t trackBgColorTop = g_pCurrentTheme->palette.secondary;      
-    uint16_t trackBgColorBot = DARKEN_COLOR(trackBgColorTop); // Efecto hundido
-
-    uint16_t trackActiveColorTop = g_pCurrentTheme->palette.success;  
-    uint16_t trackActiveColorBot = DARKEN_COLOR(trackActiveColorTop); // Efecto 3D / Gel
-
-    uint16_t knobColorTop = g_pCurrentTheme->palette.primary;         
-    uint16_t knobColorBot = DARKEN_COLOR(knobColorTop);
-
-    // 2. Proteger límites matemáticos
-    if (sl->currentValue < sl->minValue) sl->currentValue = sl->minValue;
-    if (sl->currentValue > sl->maxValue) sl->currentValue = sl->maxValue;
-
-    // 3. Geometría Dinámica (con tu factor 1.15)
-    uint16_t dynamicKnobRadius = sl->size.height * 1.25;
-    sl->knobRadius = dynamicKnobRadius;
-
-    int16_t trackY = sl->pos.y; 
-
- 	int16_t pixelRange = 0;
-	if(sl->bShowKnob)
-    	pixelRange = sl->size.width - (1.5 * dynamicKnobRadius);
-	else 
-    	pixelRange = sl->size.width - (dynamicKnobRadius);
-
-    int16_t valueRange = sl->maxValue - sl->minValue;
-    if (valueRange == 0) valueRange = 1;
-
-    int16_t activeOffset = ((sl->currentValue - sl->minValue) * pixelRange) / valueRange;
-    int16_t knobCenterX = sl->pos.x + 1.0 * dynamicKnobRadius + activeOffset;
-
-	if(sl->currentValue == 0) {
-		if(sl->bShowKnob)
-			knobCenterX = sl->pos.x + 0.5 * dynamicKnobRadius;
-	}
-    // =========================================================
-    // DIBUJADO CON GRADIENTES
-    // =========================================================
-    
-    // 1. Track de Fondo (Gradiente invertido opcional para dar efecto de "canaleta hundida")
-    // Si prefieres que resalte, usa BgColorTop primero, si prefieres hundido, inviértelos.
-    gfx_fillGradientRoundRect(pBuf, 
-                              sl->pos.x, trackY, 
-                              sl->size.width, sl->size.height, 
-                              sl->size.height, 
-                              trackBgColorBot, trackBgColorTop); // Invertido para efecto cóncavo
-
-    // 2. Track Activo (Color principal con gradiente tipo "Cilindro" o "Gel")
-    int16_t activeTrackWidth = knobCenterX - sl->pos.x;
-	if(sl->currentValue == 0 && !sl->bShowKnob)
-		activeTrackWidth = knobCenterX - sl->pos.x;
-	
-    if (sl->currentValue >= sl->minValue) { 
-        gfx_fillGradientRoundRect(pBuf, 
-                                  sl->pos.x, trackY, 
-                                  activeTrackWidth, sl->size.height, 
-                                  sl->size.height, 
-                                  trackActiveColorTop, trackActiveColorBot);
-    }
-
-    // 3. Dibujar la Perilla (Knob)
-	if(sl->bShowKnob) {
-    	int16_t knobCenterY = sl->pos.y + (sl->size.height / 2);
-    
-    	// Como no tenemos gfx_fillGradientCircle, podemos simular un gradiente radial / bisel
-    	// dibujando un círculo base oscuro y uno interior más claro y ligeramente desplazado.
-    	gfx_fillCircle(pBuf, knobCenterX, knobCenterY, dynamicKnobRadius / 2, trackBgColorBot); // Borde/Sombra
-    	gfx_fillCircle(pBuf, knobCenterX, knobCenterY, dynamicKnobRadius / 2 - 2, knobColorTop); // Brillo principal
-	}
-
-    // Limpiar bandera
-    sl->bIsDirty = false;
-} */
 
 void gfx_drawSlider(pixel16_t *pBuf, gfx_Slider *sl) {
     if (!pBuf || !sl || !g_pCurrentTheme) return;
@@ -1746,4 +1639,82 @@ void gfx_MultigraphRenderEVEComponents(gfx_MultiGraph *graph) {
             }
         }
     }
+}
+
+void gfx_ImageRenderEVEComponents(gfx_Image *img) {
+    if (!img || img->size.width == 0 || img->size.height == 0) return;
+
+    // 1. Configurar el contexto de la imagen en el Handle 1
+    API_BITMAP_HANDLE(1);
+    API_BITMAP_SOURCE(img->ramgAddress);
+
+    uint16_t stride = img->size.width * 2; // RGB565 usa 2 bytes por pixel
+
+    API_BITMAP_LAYOUT(RGB565, stride, img->size.height);
+    API_BITMAP_LAYOUT_H(stride >> 10, img->size.height >> 9);
+
+    uint16_t drawnW = img->size.width * img->scale;
+    uint16_t drawnH = img->size.height * img->scale;
+
+    API_BITMAP_SIZE(NEAREST, BORDER, BORDER, drawnW, drawnH);
+    API_BITMAP_SIZE_H(drawnW >> 9, drawnH >> 9);
+
+    // 2. Aplicar matriz de escalado si es necesario
+    if (img->scale > 1) {
+        int32_t s32ScaleFactor = 65536 * img->scale; 
+        API_CMD_LOADIDENTITY();
+        API_CMD_SCALE(s32ScaleFactor, s32ScaleFactor);
+        API_CMD_SETMATRIX();
+    }
+
+    // 3. Dibujar el bitmap usando el Handle 1
+    API_BEGIN(BITMAPS);
+    
+    // Nota: VERTEX2II usa parámetros (x, y, handle, cell)
+    API_VERTEX2II(img->pos.x, img->pos.y, 1, 0); 
+    
+    API_END();
+
+    // 4. Restaurar la matriz para no afectar a otros widgets de hardware
+    if (img->scale > 1) {
+        API_CMD_LOADIDENTITY();
+        API_CMD_SETMATRIX();
+    }
+}
+
+bool gfx_ImageLoadPNG(gfx_Image *img, const uint8_t *pngData, uint32_t dataSize, uint32_t targetRamGAddr) {
+    if (!img || !pngData || dataSize == 0) return false;
+
+    // 1. Decodificar el PNG apuntando a la zona segura de la RAM_G
+    API_LIB_BeginCoProList();
+    API_CMD_LOADIMAGE(targetRamGAddr, 0); 
+    API_LIB_EndCoProList();
+    
+    // Inyectar los bytes del archivo PNG
+    API_LIB_WriteDataToCMD(pngData, dataSize);
+    API_LIB_AwaitCoProEmpty();
+
+    // 2. Extraer las propiedades calculadas por EVE
+    API_LIB_BeginCoProList();
+    API_CMD_GETPROPS(0, 0, 0);
+    API_LIB_EndCoProList();
+    API_LIB_AwaitCoProEmpty();
+
+    uint16_t REG_CMD_WRITE_OFFSET = EVE_MemRead16(REG_CMD_WRITE);
+    
+    // El ancho (width) se almacena 8 bytes atrás en la RAM_CMD
+    uint16_t ParameterAddr = ((REG_CMD_WRITE_OFFSET - 8) & 4095);
+    img->size.width = EVE_MemRead16((RAM_CMD + ParameterAddr));
+
+    // El alto (height) se almacena 4 bytes atrás
+    ParameterAddr = ((REG_CMD_WRITE_OFFSET - 4) & 4095);
+    img->size.height = EVE_MemRead16((RAM_CMD + ParameterAddr));
+
+    // Guardamos la dirección asignada
+    img->ramgAddress = targetRamGAddr;
+    
+    // Valor por defecto
+    if(img->scale == 0) img->scale = 1; 
+
+    return true;
 }

@@ -796,39 +796,17 @@ void EVE_ReadMemoryBlock(uint32_t ftAddress, uint8_t *destBuffer, uint32_t numBy
 
 void API_WakeUpScreen(void) {
   HAL_SPI_PD_Low();
-  SysCtlDelay(MS_2_CLK(500)); // 350
+  SysCtlDelay(MS_2_CLK(30)); // 350
 
-  // EVE_TURN_ON_LOW();
-  // SysCtlDelay(MS_2_CLK(1000));
-  //  EVE_TURN_ON_HIGH();
-  //  SysCtlDelay(MS_2_CLK(350));
   HAL_SPI_PD_High();
-  SysCtlDelay(MS_2_CLK(500)); // Must be at least 20ms
+  SysCtlDelay(MS_2_CLK(30)); // Must be at least 20ms
   HAL_SPI_PD_Low();
-  SysCtlDelay(MS_2_CLK(500)); // 350
+  SysCtlDelay(MS_2_CLK(30)); // 350
 
-  // EVE_TURN_ON_LOW();
-  // SysCtlDelay(MS_2_CLK(1000));
-  //  EVE_TURN_ON_HIGH();
-  //  SysCtlDelay(MS_2_CLK(350));
   HAL_SPI_PD_High();
-  SysCtlDelay(MS_2_CLK(500)); // Must be at least 20ms
+  SysCtlDelay(MS_2_CLK(30)); // Must be at least 20ms
 
   EVE_Init();
-  // Setup the CLk to be external an run at default speed (60 MHz)
-  // EVE_CmdWrite(FT81x_HOST_CMD_CLKEXT, FT81x_HOST_PARAM_EMPTY);
-  // EVE_CmdWrite(FT81x_HOST_CMD_CLKSEL, FT81x_HOST_PARAM_CLK_DEFAULT);
-
-  // Wake up the device
-  // EVE_CmdWrite(FT81x_HOST_CMD_ACTIVE, FT81x_HOST_PARAM_EMPTY);
-
-  // Cmd_Active start the self diagnosis process and may take up to 300ms.
-  // But we can read REG_ID to verify this step
-  // while (EVE_MemRead8(REG_ID) != FT81x_CHIP_ID_VALUE) {
-  //   TIVA_LOGI(TASK_NAME, "Error! FT81x ID mismatch! Retrying... \n");
-  //   SysCtlDelay(MS_2_CLK(100));
-  // }
-  // TIVA_LOGI(TASK_NAME, "REG_ID is correct! \n");
 }
 
 // Begins co-pro list for display creation

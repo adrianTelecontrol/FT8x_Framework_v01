@@ -47,7 +47,8 @@ typedef enum {
     RENDER_IDLE = 0,
     RENDER_SEND_ROW,
     RENDER_WAIT_DMA,
-    RENDER_WAIT_SG_ISR  // <--- NEW: Waiting for the Scatter-Gather ISR
+    RENDER_WAIT_SG_ISR,  // <--- NEW: Waiting for the Scatter-Gather ISR
+	RENDER_FINISHED,
 } RenderState_e;
 
 typedef struct {
