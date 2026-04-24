@@ -5,6 +5,7 @@
 #include "hal_eeprom.h"
 #include "eeprom_map.h"
 #include "forms_manager.h"
+#include "hal_spi.h"
 #include "gfx.h"
 #include "helpers.h"
 
@@ -81,6 +82,7 @@ void gestureEngineTask(void) {
 
 
 void gestureEngineTask(void) {
+	if(g_bSPI_TransferActive) return;
     uint32_t ui32CurrentTicks = DWTGetCycleCounter();
 
     // 1. Non-Blocking Sleep: Execute at 30Hz (~33ms)

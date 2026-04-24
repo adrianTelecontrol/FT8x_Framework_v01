@@ -8,6 +8,7 @@
 #include "EVE_colors.h"
 #include "gfx_canvas.h"
 #include "forms_manager.h"
+#include "sdspi_hal.h"
 
 #include "helpers.h"
 #include "gfx_theme.h"
@@ -15,6 +16,12 @@
 #include "navigation_widgets.h"
 
 #include "dashboard_form.h"
+
+#ifndef EVE_FREE_RAMG_START
+#define EVE_FREE_RAMG_START		768000 + 200
+#endif
+
+static const char *TAG = "dashboardForm";
 
 static gfx_Canvas g_sSystemCanvas;
 
@@ -29,6 +36,7 @@ gfx_GenericWidget dateWidget;
 gfx_GenericWidget timeWidget;
 gfx_GenericWidget headerPanelWidget;
 gfx_GenericWidget emergencyStopWidget;
+gfx_GenericWidget tcLogoImgWidget;
 
 // Panel: Temperaturas
 gfx_GenericWidget tempPanelBgWidget;
@@ -65,10 +73,11 @@ gfx_GenericWidget btnGraphWidget;
 // 2. The Persistent Memory (Data)
 // ==========================================
 // Header
+gfx_Rectangle headerPanelData;
+gfx_Image tcLogoImgData;
 gfx_Label titleData;
 gfx_Label dateData;
 gfx_Label timeData;
-gfx_Rectangle headerPanelData;
 gfx_Button emergencyStopData;
 
 // Panel: Temperaturas
@@ -123,9 +132,10 @@ static void onEmergencyStopBtnRelease(gfx_Button *btn) {
 }
 
 static void onT1ValueChanged(uint32_t val) {
-	float fval = *(float *)val;
+	//float fval = *(float *)val;
 	//float fval = (float )val;
-	snprintf(t1Buffer, 16, "%.1f C", fval);
+	float fval = rand() % 20;
+	sprintf(t1Buffer, "%.1f C", fval);
 	t1ValueData.bIsDirty = true;
 }
 
@@ -160,6 +170,20 @@ void initDashboardForm(void)
 {
     g_sSystemCanvas.ui16BackgroundColor = g_pCurrentTheme->palette.background; 
     g_sSystemCanvas.psWidgets = NULL;
+
+	tcLogoImgData = (gfx_Image) {
+		.name = "mainLogo",
+		.pos.x = 5,
+		.pos.y = 10,
+		.scale = 1,
+	};
+
+	if(!SDSPI_LoadEVEImage(&tcLogoImgData, "logo_tc.png", EVE_FREE_RAMG_START)) {
+		TIVA_LOGE(TAG, "Fallo al cargar logo_tc.png en EVE");
+	}
+
+	tcLogoImgWidget.eWidgetType = WD_TYPE_IMAGE;
+	tcLogoImgWidget.pvWidget = (void *)&tcLogoImgData;
 
     // --- HEADER ---
 	headerPanelData = (gfx_Rectangle){
@@ -384,6 +408,7 @@ void initDashboardForm(void)
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &headerPanelWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &tempPanelBgWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &statusPanelBgWidget);
+	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &tcLogoImgWidget);
 	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t1PanelWidget);
 	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t2PanelWidget);
 	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t3PanelWidget);
@@ -402,15 +427,16 @@ void initDashboardForm(void)
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t1Widget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t2Widget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t3Widget);
-    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t1ValueWidget);
-    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t2ValueWidget);
-    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t3ValueWidget);
 
     // Contenido Status
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &statusPanelTitleWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &vinLabelWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &voutLabelWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &statusLabelWidget);
+	   
+    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t1ValueWidget);
+    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t2ValueWidget);
+    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t3ValueWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &vinValueWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &voutValueWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &statusValueWidget);

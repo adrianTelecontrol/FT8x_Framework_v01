@@ -19,6 +19,10 @@ int16_t formManagerAddForm(gfx_Canvas *form);
 
 bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture);
 
+bool formManagerCheckHardwareDirty(void);
+
+bool formManagerCheckSoftwareDirty(void);
+
 void formManagerDirtyRender();
 
 void formManagerComposite(pixel16_t *psPixelBuffer);

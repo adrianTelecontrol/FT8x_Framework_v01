@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "font_engine.h" // Necesario para gfx_FontFamily_e
+#include "font_engine.h"
 
 // Semantic color palette
 typedef struct {

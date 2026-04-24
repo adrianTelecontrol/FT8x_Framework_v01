@@ -101,7 +101,6 @@ void ConfigureUART(void) {
 
 
 int main(void) {
-
   // Enable all the ports
   PinoutSet(false, false);
 
@@ -112,7 +111,6 @@ int main(void) {
   // Configure the UART for system output
   ConfigureUART();
 
-  //MAP_IntMasterEnable();
   TIVA_LOGI(TASK_NAME, "Starting application...");
 
   Gfx_initEngine(LCD_WIDTH, LCD_HEIGHT);
@@ -124,13 +122,11 @@ int main(void) {
   HAL_SPI_Init();
   TIVA_LOGI(TASK_NAME, "SPI set up successfully!");
   TIVA_LOGI(TASK_NAME, "Initial FT81x state...");
-  //SysCtlDelay(MS_2_CLK(500));
   TIVA_LOGI(TASK_NAME, "Awaking screen...");
   API_WakeUpScreen();
   TIVA_LOGI(TASK_NAME, "Screen is awake!");
   SysCtlDelay(MS_2_CLK(200));
   TIVA_LOGI(TASK_NAME, "Running Quick FT81x SPI verification... ");
-  QuickSanityCheck();
 
   TIVA_LOGI(TASK_NAME, "Clearing the screen to 0x%x color", EVE_PINK);
   EVE_MemWrite8(REG_PWM_DUTY, 128);
@@ -138,8 +134,6 @@ int main(void) {
   gfx_start(0x00000000);
   gfx_end();
 
-  //EVE_PlayIntroVideo();
-  //gfx_calibrate();
   bool ret = HAL_EEPROM_init();
   if(ret)
 	TIVA_LOGI(TASK_NAME, "EEPROM OK");
@@ -172,18 +166,17 @@ int main(void) {
   // Send initial full frame
   formManagerComposite(g_pDrawingBuffer);
 
-  Gfx_render();
-  formManagerRenderEVEComponents();
+  Gfx_sendFullFrame(false);
+  while(g_bSPI_TransferActive);
+  Gfx_showFullFrame();
 
   gestureEngineInit();
 
-  //Event_Post(EVT_CMD_FULL_REPAINT, 0);
-  
   Event_Post(EVT_CMD_START_BOOT_SEQ, 0);
   while (1) {
-	Gfx_RenderTask();
+	Gfx_renderTask();
 
-    //gestureEngineTask();
+    gestureEngineTask();
 
 	controlSimulatiorTask();
 

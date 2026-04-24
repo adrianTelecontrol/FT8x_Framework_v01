@@ -94,7 +94,7 @@ gfx_Slider    progressBarData;
 
 static char pctData[10];
 
-#define EVE_FREE_RAMG_START		768000
+#define EVE_FREE_RAMG_START		768000 + 200
 
 static const char *TAG = "bootForm";
 
@@ -331,7 +331,7 @@ void initBootForm(void)
     // 4. Insertion into Canvas
     // ==========================================
     // Background / Structure
-	canvasInsertAtTop(&g_sBootCanvas.psWidgets, &tcLogoImgWidget);
+	//canvasInsertAtTop(&g_sBootCanvas.psWidgets, &tcLogoImgWidget);
     canvasInsertAtTop(&g_sBootCanvas.psWidgets, &progressBarWidget);
     
     // Texts and Labels

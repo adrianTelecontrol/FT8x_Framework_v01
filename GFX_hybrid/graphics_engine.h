@@ -1,9 +1,10 @@
-#ifndef GRAPHICS_ENGINE_H_
-#define GRAPHICS_ENGINE_H_
+#ifndef GRAPHICS_ENGINE_H
+#define GRAPHICS_ENGINE_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
+// #include "gfx.h"
 
 typedef union
 {
@@ -34,7 +35,7 @@ typedef struct {
     uint16_t length;   
 } DMARenderJob_t;
 
-#define MAX_DMA_JOBS 512
+#define MAX_DMA_JOBS 1024
 
 typedef struct {
     DMARenderJob_t jobs[MAX_DMA_JOBS];
@@ -45,9 +46,8 @@ typedef struct {
 
 typedef enum {
     RENDER_IDLE = 0,
-    RENDER_SEND_ROW,
     RENDER_WAIT_DMA,
-    RENDER_WAIT_SG_ISR,  // <--- NEW: Waiting for the Scatter-Gather ISR
+	RENDER_EVE_COMPONENTS,
 	RENDER_FINISHED,
 } RenderState_e;
 
@@ -58,20 +58,21 @@ typedef struct {
 extern volatile DMAJobQueue_t g_DMAQueue;
 extern volatile RenderEngine_t g_RenderEngine;
 
+extern bool g_bIsJobTransfer; 
+
 void Helper_FloatToString(char *buffer, uint32_t whole, uint32_t frac, bool bAddEnd);
 
 bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight);
 
 void Gfx_loadIntoBuffer(uint32_t ui32Index, uint16_t ui16Pixel);
 
-void Gfx_setProcessDuration(uint32_t ui32ProcDur);
-
 void Gfx_composite(pixel16_t *pLayer0, pixel16_t *pLayer1);
+
 
 inline void Gfx_RestoreBackground_Fast(pixel16_t *pCleanBackground, pixel16_t *pDrawBuffer, 
                                               int16_t x, int16_t y, int16_t width, int16_t height);
 
-void Gfx_Start_SG_Transfer(void);
+void Gfx_Start_SG_Transfer(bool bIsBlocking);
 
 void Gfx_BuildDynamicSG(uint8_t *pSrc, uint32_t totalBytes);
 
@@ -79,9 +80,15 @@ bool Gfx_BuildSg_For_Segments(pixel16_t *pActiveBuffer, int16_t x, int16_t y, in
 
 void Gfx_SendContinuousBlock_SG(pixel16_t *pActiveBuffer, int16_t x, int16_t y, int16_t w, int16_t h);
 
-void Gfx_RenderTask(void);
+void Gfx_displayBitmap(void);
 
-void Gfx_render(void);
+void Gfx_renderTask(void);
+
+void Gfx_sendFullFrame(bool bIsBlocking);
+
+bool Gfx_PushDMAJob(DMARenderJob_t job);
+
+void Gfx_showFullFrame();
 
 
 #endif

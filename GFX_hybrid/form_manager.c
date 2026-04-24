@@ -6,6 +6,7 @@
 #include "gesture_engine.h"
 #include "gfx.h"
 #include "EVE.h"
+#include "FT8xx_params.h"
 #include "graphics_engine.h"
 
 #include "forms/graph_form.h"
@@ -227,11 +228,11 @@ void formManagerRenderEVEComponents(void) {
   
   iter = g_psCurrentForm->psWidgets;
   // 1. Iniciamos una nueva Display List
-  API_LIB_BeginCoProList();
-  API_CMD_DLSTART();
-  API_CLEAR_COLOR_RGB(0, 0, 0);
-  API_CLEAR(1, 1, 1);
-  API_COLOR_RGB(255, 255, 255);
+  // API_LIB_BeginCoProList();
+  // API_CMD_DLSTART();
+  // API_CLEAR_COLOR_RGB(0, 0, 0);
+  // API_CLEAR(1, 1, 1);
+  // API_COLOR_RGB(255, 255, 255);
 
   uint16_t ui16Width = 800;
   uint16_t ui16Height = 480;
@@ -283,10 +284,124 @@ void formManagerRenderEVEComponents(void) {
   }
 
   // 3. Cerramos y hacemos el SWAP en el hardware
-  API_DISPLAY();
-  API_CMD_SWAP();
-  API_LIB_EndCoProList();
+  // API_DISPLAY();
+  // API_CMD_SWAP();
+  // API_LIB_EndCoProList();
 
-  // Esperamos a que todo el frame (SWAP incluido) sea procesado
-  API_LIB_AwaitCoProEmpty();
+  // // Esperamos a que todo el frame (SWAP incluido) sea procesado
+  // API_LIB_AwaitCoProEmpty();
+}
+
+// En form_manager.c
+bool formManagerCheckSoftwareDirty(void) {
+    bool bNeedsUpdate = false;
+    gfx_GenericWidgetNode *iter = g_psCurrentForm->psWidgets;
+
+    while (iter != NULL) {
+        gfx_DirtyRect bbox = {0};
+
+        // Delegamos la lógica al tipo de widget correspondiente
+        switch (iter->sWidget.eWidgetType) {
+            case WD_TYPE_BUTTON:
+			    if(( (gfx_Button *)iter->sWidget.pvWidget )->bIsDirty) {
+                	bbox = gfx_ButtonProcessState((gfx_Button *)iter->sWidget.pvWidget);
+					gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bbox.x, bbox.y, bbox.w, bbox.h);
+				}
+                break;
+            case WD_TYPE_LABEL: {
+			    if(( (gfx_Label *)iter->sWidget.pvWidget )->bIsDirty) {
+                	bbox = gfx_LabelProcessState((gfx_Label *)iter->sWidget.pvWidget);
+					gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bbox.x, bbox.y, bbox.w, bbox.h);
+				}
+                break;
+			}
+            // ... otros widgets
+        }
+
+        // Si el widget cambió, creamos los trabajos DMA solo para su área
+        if (bbox.isDirty) {
+            bNeedsUpdate = true;
+            
+            // Generar trabajos Scatter-Gather solo para el Bounding Box
+			int row = 0;
+            for (; row < bbox.h; row++) {
+                DMARenderJob_t job;
+                
+                // Calcular el offset en SDRAM y RAM_G
+                uint32_t pixelOffset = ((bbox.y + row) * LCD_WIDTH) + bbox.x;
+                
+                // Puntero de origen en SDRAM (g_pDrawingBuffer + offset)
+                job.pSrcSDRAM = (uint8_t *)(g_pDrawingBuffer + pixelOffset);
+                
+                // Dirección destino en EVE G_RAM (0 + offset * 2 bytes por pixel RGB565)
+                job.destRAMG = (pixelOffset * 2); 
+                
+                // Longitud a transferir (ancho del widget * 2)
+                job.length = bbox.w * 2; 
+
+                // Meter el trabajo a la cola de tu ISR
+                Gfx_PushDMAJob(job); 
+            }
+			
+			return bNeedsUpdate;
+        }
+        iter = iter->psNext;
+    }
+
+    return bNeedsUpdate;
+}
+
+bool formManagerCheckHardwareDirty(void) {
+    bool bNeedsUpdate = false;
+    gfx_GenericWidgetNode *iter = g_psCurrentForm->psWidgets;
+
+    // Iteramos por todos los widgets de la pantalla actual
+    while (iter != NULL) {
+        
+        // Evaluamos SOLO los widgets que se renderizan mediante EVE (Hardware)
+        switch (iter->sWidget.eWidgetType) {
+            
+            case WD_TYPE_MULTIGRAPH: {
+                gfx_MultiGraph *mgraph = (gfx_MultiGraph *)iter->sWidget.pvWidget;
+                // Verificamos si alguna de sus banderas de actualización está activa
+                if (mgraph->bIsDirty || mgraph->bEVEDirty) {
+                    bNeedsUpdate = true;
+                }
+                break;
+            }
+
+            case WD_TYPE_GRAPH: {
+                gfx_Graph *graph = (gfx_Graph *)iter->sWidget.pvWidget;
+                if (graph->bIsDirty || graph->bEVEDirty) {
+                    bNeedsUpdate = true;
+                }
+                break;
+            }
+
+            case WD_TYPE_IMAGE: {
+                gfx_Image *img = (gfx_Image *)iter->sWidget.pvWidget;
+                // Las imágenes decodificadas por hardware usan este flag si 
+                // cambian de posición, escala, o si se ocultan/muestran.
+                if (img->bIsDirty) {
+                    bNeedsUpdate = true;
+                }
+                break;
+            }
+
+            // NOTA: Si en el futuro decides que los Sliders se rendericen 
+            // 100% por EVE (usando CMD_SLIDER) en lugar de software, 
+            // agregarías su case aquí.
+        }
+
+        // Si ya encontramos al menos un componente sucio, podríamos hacer un 'break'
+        // para ahorrar ciclos de CPU (Fast Return), pero si necesitas que todos 
+        // ejecuten alguna pre-lógica, lo dejamos iterar. Para máximo rendimiento:
+        if (bNeedsUpdate) {
+            break; 
+        }
+
+        iter = iter->psNext;
+    }
+
+    return bNeedsUpdate;
 }

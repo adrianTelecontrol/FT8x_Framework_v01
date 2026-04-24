@@ -62,6 +62,15 @@ typedef struct Position {
   int16_t y;
 } Position;
 
+// En gfx.h
+typedef struct {
+    int16_t x;
+    int16_t y;
+    int16_t w;
+    int16_t h;
+    bool isDirty;
+} gfx_DirtyRect;
+
 /************************  Widgets struct ***********************/
 typedef struct Point {
   Position pos;
@@ -341,4 +350,12 @@ void gfx_MultigraphRenderEVEComponents(gfx_MultiGraph *graph);
 void gfx_ImageRenderEVEComponents(gfx_Image *img);
 
 bool gfx_ImageLoadPNG(gfx_Image *img, const uint8_t *pngData, uint32_t dataSize, uint32_t targetRamGAddrr);
+
+gfx_DirtyRect gfx_ButtonProcessState(gfx_Button *btn);
+
+gfx_DirtyRect gfx_LabelProcessState(gfx_Label *lbl);
+
+bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
+                               int16_t dirtyX, int16_t dirtyY, 
+                               int16_t dirtyW, int16_t dirtyH);
 #endif // GFX_H

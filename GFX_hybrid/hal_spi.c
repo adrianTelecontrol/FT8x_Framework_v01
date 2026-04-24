@@ -46,7 +46,8 @@ volatile uint32_t g_ui32ExecDurMs;
 
 bool g_bIsQuadActive = false;
 
-// SSI Interrupt handler
+// SSI Interrupt handler WORKING
+/*
 void SSI3IntHandler(void) {
   // 1. Read and clear the interrupt status
   uint32_t ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
@@ -69,15 +70,13 @@ void SSI3IntHandler(void) {
     // Signal to the CPU that the DMA is free!
     g_bSPI_TransferActive = false;
 
-    // Stop the transmition counter
-  	g_ui32EndTxCycles = DWTGetCycleCounter();
   }
 
   // Safety catch for RX Overruns
   if (ui32Status & SSI_RXOR) {
     MAP_SSIIntClear(SSI3_BASE, SSI_RXOR);
   }
-}
+}*/
 
 bool HAL_SPI_IsBusy(void) { return g_bSPI_TransferActive; }
 

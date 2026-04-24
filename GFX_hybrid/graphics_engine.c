@@ -60,8 +60,6 @@ pixel16_t *g_pSendingBuffer;
 extern uint8_t g_HAL_uDMA_ControlTable[1024];
 #define PRIMARY_CTRL_TABLE ((tDMAControlTable *)g_HAL_uDMA_ControlTable)
 
-static uint32_t g_ui32ProcDur = 0;
-
 // --- FULL SCREEN SCATTER GATHER STRUCTURES ---
 #if defined(__ICCARM__)
 #pragma data_alignment = 1024
@@ -97,6 +95,161 @@ volatile RenderEngine_t g_RenderEngine = {RENDER_IDLE};
 
 static const char *TASK_NAME = "gfx";
 
+// SPI ISR
+// Bandera global que debes definir en graphics_engine.c
+// Ponla en 'true' cuando inicies una transferencia de la cola de trabajos,
+// y déjala en 'false' cuando uses Gfx_Start_SG_Transfer() para el frame
+// completo.
+bool g_bIsJobTransfer;
+// Sumidero para los bytes RX que genera el reloj SPI al transmitir
+static uint8_t g_dummyRxByte;
+
+// SSI Interrupt handler
+/*
+void SSI3IntHandler(void) {
+    uint32_t ui32Status = MAP_SSIIntStatus(SSI3_BASE, true);
+    MAP_SSIIntClear(SSI3_BASE, ui32Status);
+
+	if (MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) return;
+
+    while (MAP_SSIBusy(SSI3_BASE));
+    HAL_SPI_CS_Disable();
+
+    if (g_bIsJobTransfer && g_DMAQueue.count > 0) {
+
+        g_DMAQueue.count--;
+        g_DMAQueue.tail = (g_DMAQueue.tail + 1) % MAX_DMA_JOBS;
+
+        if (g_DMAQueue.count > 0) {
+            uint32_t trash;
+            while (MAP_SSIDataGetNonBlocking(SSI3_BASE, &trash));
+            MAP_SSIIntClear(SSI3_BASE, SSI_RXOR);
+
+            DMARenderJob_t nextJob = g_DMAQueue.jobs[g_DMAQueue.tail];
+
+            HAL_SPI_CS_Enable();
+
+            if (g_bIsQuadActive) {
+                MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
+                MAP_SSIDataPut(SSI3_BASE, (uint8_t)((nextJob.destRAMG >> 16) | 0x80));
+                MAP_SSIDataPut(SSI3_BASE, (uint8_t)(nextJob.destRAMG >> 8));
+                MAP_SSIDataPut(SSI3_BASE, (uint8_t)(nextJob.destRAMG));
+            } else {
+                EVE_AddrForWr(nextJob.destRAMG);
+            }
+
+            while (MAP_SSIBusy(SSI3_BASE));
+
+            MAP_uDMAChannelControlSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
+                                      UDMA_SIZE_8 | UDMA_SRC_INC_NONE |
+                                      UDMA_DST_INC_NONE | UDMA_ARB_1);
+            MAP_uDMAChannelTransferSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
+                                       UDMA_MODE_BASIC,
+                                       (void *)(SSI3_BASE + SSI_O_DR),
+                                       &g_dummyRxByte, nextJob.length);
+
+            MAP_uDMAChannelControlSet(UDMA_CH15_SSI3TX | UDMA_PRI_SELECT,
+                                      UDMA_SIZE_8 | UDMA_SRC_INC_8 |
+                                      UDMA_DST_INC_NONE | UDMA_ARB_1);
+            MAP_uDMAChannelTransferSet(UDMA_CH15_SSI3TX | UDMA_PRI_SELECT,
+                                       UDMA_MODE_BASIC,
+                                       nextJob.pSrcSDRAM,
+                                       (void *)(SSI3_BASE + SSI_O_DR),
+                                       nextJob.length);
+
+            MAP_uDMAChannelEnable(UDMA_CH14_SSI3RX);
+            MAP_uDMAChannelEnable(UDMA_CH15_SSI3TX);
+            return;   
+        }
+    }
+
+    MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+    MAP_SSIIntDisable(SSI3_BASE, SSI_DMATX);
+
+    g_bSPI_TransferActive = false;
+    g_bIsJobTransfer      = false;
+    g_bIsBackgroundReady  = true;
+
+    g_ui32EndTxCycles = DWTGetCycleCounter();
+
+    if (ui32Status & SSI_RXOR) {
+        MAP_SSIIntClear(SSI3_BASE, SSI_RXOR);
+    }
+}*/
+// SSI Interrupt handler
+
+void SSI3IntHandler(void) {
+  uint32_t ui32Status = MAP_SSIIntStatus(SSI3_BASE, 1);
+  MAP_SSIIntClear(SSI3_BASE, ui32Status);
+
+  if (g_bSPI_TransferActive && !MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
+
+    while (MAP_SSIBusy(SSI3_BASE))
+      ;
+    HAL_SPI_CS_Disable();
+
+    if (g_bIsJobTransfer) {
+
+      g_DMAQueue.count--;
+      g_DMAQueue.tail = (g_DMAQueue.tail + 1) % MAX_DMA_JOBS;
+
+      if (g_DMAQueue.count > 0) {
+
+        uint32_t trash;
+        while (MAP_SSIDataGetNonBlocking(SSI3_BASE, &trash))
+          ;
+        MAP_SSIIntClear(SSI3_BASE, SSI_RXOR);
+
+        DMARenderJob_t nextJob = g_DMAQueue.jobs[g_DMAQueue.tail];
+
+        HAL_SPI_CS_Enable();
+
+        if (g_bIsQuadActive) {
+          MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
+          MAP_SSIDataPut(SSI3_BASE, (uint8_t)((nextJob.destRAMG >> 16) | 0x80));
+          MAP_SSIDataPut(SSI3_BASE, (uint8_t)(nextJob.destRAMG >> 8));
+          MAP_SSIDataPut(SSI3_BASE, (uint8_t)(nextJob.destRAMG));
+        } else {
+          EVE_AddrForWr(nextJob.destRAMG);
+        }
+
+        // A. Reconfigurar "Sumidero" RX
+        MAP_uDMAChannelControlSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
+                                  UDMA_SIZE_8 | UDMA_SRC_INC_NONE |
+                                      UDMA_DST_INC_NONE | UDMA_ARB_1);
+        MAP_uDMAChannelTransferSet(
+            UDMA_CH14_SSI3RX | UDMA_PRI_SELECT, UDMA_MODE_BASIC,
+            (void *)(SSI3_BASE + SSI_O_DR), &g_dummyRxByte, nextJob.length);
+
+        // B. Reconfigurar TX
+        MAP_uDMAChannelControlSet(UDMA_CH15_SSI3TX | UDMA_PRI_SELECT,
+                                  UDMA_SIZE_8 | UDMA_SRC_INC_8 |
+                                      UDMA_DST_INC_NONE | UDMA_ARB_1);
+        MAP_uDMAChannelTransferSet(
+            UDMA_CH15_SSI3TX | UDMA_PRI_SELECT, UDMA_MODE_BASIC,
+            nextJob.pSrcSDRAM, (void *)(SSI3_BASE + SSI_O_DR), nextJob.length);
+
+        // C. Habilitar AMBOS canales
+        MAP_uDMAChannelEnable(UDMA_CH14_SSI3RX);
+        MAP_uDMAChannelEnable(UDMA_CH15_SSI3TX);
+
+        return;
+      }
+    }
+
+    // LIMPIEZA FINAL
+    MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+    MAP_SSIIntDisable(SSI3_BASE, SSI_DMATX);
+
+    g_bSPI_TransferActive = false;
+    g_bIsJobTransfer = false;
+  }
+
+  if (ui32Status & SSI_RXOR) {
+    MAP_SSIIntClear(SSI3_BASE, SSI_RXOR);
+  }
+}
+
 // --- HELPER FUNCTIONS ---
 
 void Helper_IntToFPSString(char *buffer, uint32_t whole, uint32_t frac) {
@@ -111,11 +264,37 @@ void Helper_IntToFPSString(char *buffer, uint32_t whole, uint32_t frac) {
   *ptr++ = '\0';
 }
 
-void Gfx_setProcessDuration(uint32_t ui32ProcDur) {
-  g_ui32ProcDur = ui32ProcDur;
+// --- BUILDER FUNCTIONS ---
+/**
+ * Pushes a new DMA Scatter-Gather job into the circular queue.
+ * Returns true if successful, false if the queue is full.
+ */
+bool Gfx_PushDMAJob(DMARenderJob_t job) {
+  // 1. Check for Queue Overflow
+  if (g_DMAQueue.count >= MAX_DMA_JOBS) {
+    // TIVA_LOGE("GFX", "DMA Queue Overflow! Increase MAX_DMA_JOBS.");
+    return false;
+  }
+
+  // --- THREAD SAFETY NOTE ---
+  // In our architecture, the CPU only pushes jobs during RENDER_IDLE
+  // when g_bSPI_TransferActive is FALSE (meaning the ISR is totally inactive).
+  // Therefore, we don't strictly need to disable interrupts here.
+  // However, if your architecture changes and you push jobs asynchronously,
+  // you MUST wrap the next 3 lines in IntMasterDisable() / IntMasterEnable().
+
+  // 2. Insert the job at the current 'head' index
+  g_DMAQueue.jobs[g_DMAQueue.head] = job;
+
+  // 3. Advance the 'head' with circular wrap-around
+  g_DMAQueue.head = (g_DMAQueue.head + 1) % MAX_DMA_JOBS;
+
+  // 4. Safely increment the job count
+  g_DMAQueue.count++;
+
+  return true;
 }
 
-// --- BUILDER FUNCTIONS ---
 void Gfx_BuildDynamicSG(uint8_t *pSrc, uint32_t totalBytes) {
   if (totalBytes == 0)
     return;
@@ -447,15 +626,15 @@ void Gfx_composite(pixel16_t *pLayer0, pixel16_t *pLayer1) {
 }
 
 // --- HARDWARE INTERFACES ---
-void DisplayBitmap(void) {
+void Gfx_displayBitmap(void) {
   uint16_t ui16Width = 800;
   uint16_t ui16Height = 480;
 
-  API_LIB_BeginCoProList();
-  API_CMD_DLSTART();
-  API_CLEAR_COLOR_RGB(255, 19, 30);
-  API_CLEAR(1, 1, 1);
-  API_COLOR_RGB(255, 255, 255);
+  // API_LIB_BeginCoProList();
+  // API_CMD_DLSTART();
+  // API_CLEAR_COLOR_RGB(255, 19, 30);
+  // API_CLEAR(1, 1, 1);
+  // API_COLOR_RGB(255, 255, 255);
 
   API_BITMAP_HANDLE(0);
   API_BITMAP_SOURCE(RAM_G);
@@ -480,14 +659,16 @@ void DisplayBitmap(void) {
   API_VERTEX2II(0, 0, 0, 0);
   API_END();
 
-  API_DISPLAY();
-  API_CMD_SWAP();
-  API_LIB_EndCoProList();
-  API_LIB_AwaitCoProEmpty();
+  // API_DISPLAY();
+  // API_CMD_SWAP();
+  // API_LIB_EndCoProList();
+  // API_LIB_AwaitCoProEmpty();
+
+  // Signal that the background is displayed
+  g_bIsBackgroundReady = true;
 }
 
-
-void Gfx_Start_SG_Transfer(void) {
+void Gfx_Start_SG_Transfer(bool bIsBlocking) {
   g_bSPI_TransferActive = true;
 
   MAP_uDMAErrorStatusClear();
@@ -504,22 +685,23 @@ void Gfx_Start_SG_Transfer(void) {
   MAP_uDMAChannelEnable(UDMA_CH14_SSI3RX);
   MAP_uDMAChannelEnable(UDMA_CH15_SSI3TX);
   MAP_SSIDMAEnable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
-#ifdef GFX_ENABLE_INT
-  MAP_SSIIntEnable(SSI3_BASE, SSI_DMATX);
-#endif
+  if (!bIsBlocking) {
+    MAP_SSIIntEnable(SSI3_BASE, SSI_DMATX);
+  }
+
   MAP_uDMAChannelRequest(UDMA_CH15_SSI3TX);
 
-#ifndef GFX_ENABLE_INT
-  while (MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
-    if (HWREG(SSI3_BASE + SSI_O_RIS) & SSI_RIS_RORRIS) {
-      HWREG(SSI3_BASE + SSI_O_ICR) = SSI_ICR_RORIC;
+  if (bIsBlocking) {
+    while (MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) {
+      if (HWREG(SSI3_BASE + SSI_O_RIS) & SSI_RIS_RORRIS) {
+        HWREG(SSI3_BASE + SSI_O_ICR) = SSI_ICR_RORIC;
+      }
     }
+    while (MAP_SSIBusy(SSI3_BASE))
+      ;
+    MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
+    g_bSPI_TransferActive = false;
   }
-  while (MAP_SSIBusy(SSI3_BASE))
-    ;
-  MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
-  g_bSPI_TransferActive = false;
-#endif
 }
 
 static void onFullRepaintEvent(uint32_t args) { g_bRequestFullRepaint = true; }
@@ -546,12 +728,10 @@ bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight) {
 // --- CORE EXECUTION PATHS ---
 
 // 1. FULL SCREEN REFRESH (Call this when loading a brand new UI page)
-void Gfx_render(void) {
+void Gfx_sendFullFrame(bool bIsBlocking) {
 
   while (g_bSPI_TransferActive)
     ;
-
-  // DisplayBitmap();
 
   Gfx_BuildSG_For_Buffer((uint8_t *)g_pDrawingBuffer);
 
@@ -561,21 +741,12 @@ void Gfx_render(void) {
   while (MAP_SSIBusy(SSI3_BASE))
     ;
 
-  Gfx_Start_SG_Transfer();
-  // g_ui32StartTxCycles = DWTGetCycleCounter();
+  Gfx_Start_SG_Transfer(bIsBlocking);
 
-  DisplayBitmap();
-  g_bIsBackgroundReady = true;
-#ifndef GFX_ENABLE_INT
-  HAL_SPI_CS_Disable();
-#endif
-
-  /*
-  pixel16_t *temp = g_pDrawingBuffer;
-  g_pDrawingBuffer = g_pSendingBuffer;
-  g_pSendingBuffer = temp;
-
-  memset(g_pDrawingBuffer, 0, GFX_BUFFER_SIZE_BYTES);*/
+  if (bIsBlocking) {
+    HAL_SPI_CS_Disable();
+    g_bIsBackgroundReady = true;
+  }
 }
 
 void Gfx_SendContinuousBlock_SG(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
@@ -616,9 +787,9 @@ void Gfx_SendContinuousBlock_SG(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
     ;
 
   // 5. Fire the Scatter Gather DMA and poll until complete
-  Gfx_Start_SG_Transfer();
+  Gfx_Start_SG_Transfer(true);
 
-  g_RenderEngine.state = RENDER_WAIT_SG_ISR;
+  // g_RenderEngine.state = RENDER_WAIT_SG_ISR;
 
   // 6. Release CS to complete the FT81x transaction
   // HAL_SPI_CS_Disable();
@@ -674,33 +845,45 @@ bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
   case WD_TYPE_LABEL: {
     gfx_Label *lb = (gfx_Label *)widget->pvWidget;
 
-    // 1. Obtener dimensiones dinámicas del texto
+    // 1. Obtener dimensiones dinámicas
     uint16_t textW = 0, textH = 0;
-    int8_t fontId = gfx_ResolveFontId(lb->typo);
+    uint8_t fontId = gfx_ResolveFontId(lb->typo);
 
-    if (lb->text != NULL && fontId >= 0) {
+    if (lb->text != NULL) {
       gfx_GetStringDimensions(lb->text, fontId, &textW, &textH, 1);
     }
 
-    // 2. Ajustar la posición (X, Y) basándonos en la alineación del texto
-    int16_t wipeX = lb->pos.x;
-    int16_t wipeY = lb->pos.y;
+    // 2. Extraer el Ascent para la línea base
+    int16_t ascent = 0;
+    if (g_FontCache[fontId].isLoaded) {
+      BDF_Font_t *sFont = &g_FontCache[fontId].bdfData;
+      ascent = sFont->yAdvance + sFont->globalYOffset;
+    }
 
+    // 3. Ajustar X
+    int16_t startX = lb->pos.x;
     if (lb->alignment & ALIGN_HCENTER) {
-      wipeX = lb->pos.x - (textW / 2);
+      startX = lb->pos.x - (textW / 2);
     } else if (lb->alignment & ALIGN_RIGHT) {
-      wipeX = lb->pos.x - textW;
+      startX = lb->pos.x - textW;
     }
 
-    if (lb->alignment & ALIGN_VCENTER) {
-      wipeY = lb->pos.y - (textH / 2);
+    // 4. Ajustar Y con la matemática tipográfica correcta
+    int16_t startY = lb->pos.y;
+    if (lb->alignment & ALIGN_TOP) {
+      startY = lb->pos.y;
+    } else if (lb->alignment & ALIGN_VCENTER) {
+      startY = lb->pos.y - (textH / 2);
     } else if (lb->alignment & ALIGN_BOTTOM) {
-      wipeY = lb->pos.y - textH;
+      startY = lb->pos.y - textH;
+    } else {
+      // DEFAULT (Baseline alignment)
+      startY = lb->pos.y - ascent;
     }
 
-    // 3. Retornar los límites con los márgenes de seguridad para anti-aliasing
-    *x = wipeX - 2;
-    *y = wipeY - 2;
+    // 5. Retornar límites con padding de seguridad (Anti-aliasing)
+    *x = startX - 2;
+    *y = startY - 2;
     *w = textW + 4;
     *h = textH + 4;
 
@@ -741,83 +924,330 @@ bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
   }
 }
 
-bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
-                               int16_t dirtyX, int16_t dirtyY, int16_t dirtyW,
-                               int16_t dirtyH) {
-  if (srf == NULL) {
-    UARTprintf("Cannot render canvas! Is empty.");
-    return false;
-  }
+void Gfx_showFullFrame(void) {
+  API_LIB_BeginCoProList();
+  API_CMD_DLSTART();
+  API_CLEAR_COLOR_RGB(0, 0, 0);
+  API_CLEAR(1, 1, 1);
 
-  // 1. Erase the old UI state by restoring the background ONLY inside the dirty
-  // area (Assuming sBitmapHandler is globally accessible as in your previous
-  // snippets) Gfx_RestoreBackground_Fast((pixel16_t *)sBitmapHandler.ui8Pixels,
-  //                            psPixelBuffer, dirtyX, dirtyY, dirtyW, dirtyH);
-  int16_t y = dirtyY;
-  for (; y < dirtyY + dirtyH; y++) {
-    int16_t x = dirtyX;
-    for (; x < dirtyX + dirtyW; x++) {
+  // Dibuja la imagen base (G_RAM -> Pantalla)
+  Gfx_displayBitmap();
 
-      // Safety guard: Ensure we don't write outside the physical screen memory
-      if (x >= 0 && x < LCD_WIDTH && y >= 0 && y < LCD_HEIGHT) {
-        // Calculate the 1D linear index for the 2D coordinate
-        uint32_t linearIndex = (y * LCD_WIDTH) + x;
-        psPixelBuffer[linearIndex] =
-            (pixel16_t)g_pCurrentTheme->palette.background;
-        // psPixelBuffer[linearIndex] = (pixel16_t)(uint16_t)0xFF70;
-      }
-    }
-  }
+  // Dibuja gráficas / Líneas / Imágenes SD encima
+  formManagerRenderEVEComponents();
 
-  gfx_GenericWidgetNode *iter = srf->psWidgets;
-
-  // 2. Iterate through all widgets in the canvas
-  while (iter != NULL) {
-    int16_t objX = 0, objY = 0, objW = 0, objH = 0;
-
-    // Fetch the bounding box for this specific widget
-    if (gfx_getWidgetBounds(&iter->sWidget, &objX, &objY, &objW, &objH)) {
-
-      // 3. Collision Detection Math
-      // Returns TRUE if the widget overlaps the dirty rectangle at all
-      bool isIntersecting = !(objX > dirtyX + dirtyW || objX + objW < dirtyX ||
-                              objY > dirtyY + dirtyH || objY + objH < dirtyY);
-
-      // 4. Only draw the widget if it touches the dirty zone!
-      if (isIntersecting) {
-        switch (iter->sWidget.eWidgetType) {
-        case WD_TYPE_BUTTON:
-          gfx_drawButton(psPixelBuffer, (gfx_Button *)iter->sWidget.pvWidget);
-          break;
-        case WD_TYPE_RECT:
-          gfx_drawRectangle(psPixelBuffer,
-                            (gfx_Rectangle *)iter->sWidget.pvWidget);
-          break;
-        case WD_TYPE_LABEL:
-          gfx_drawLabel(psPixelBuffer, (gfx_Label *)iter->sWidget.pvWidget);
-          break;
-        case WD_TYPE_SLIDER:
-          gfx_drawSlider(psPixelBuffer, (gfx_Slider *)iter->sWidget.pvWidget);
-          break;
-		case WD_TYPE_GRAPH:
-		  gfx_drawGraph(psPixelBuffer, (gfx_Graph *)iter->sWidget.pvWidget);
-		  break;
-		case WD_TYPE_MULTIGRAPH:
-		  gfx_drawMultiGraph(psPixelBuffer, (gfx_MultiGraph *)iter->sWidget.pvWidget);
-		  break;
-        default:
-          break;
-        }
-      }
-    }
-
-    iter = iter->psNext;
-  }
-
-  return true;
+  API_DISPLAY();
+  API_CMD_SWAP();
+  API_LIB_EndCoProList();
 }
 
-void Gfx_RenderTask(void) {
+/*
+void Gfx_renderTask(void) {
+    // Bandera estática para recordar si nos falta enviar la mitad inferior
+    static bool g_bPendingBottomHalf = false;
+    static bool bHardwareNeedsUpdate = false;
+
+    switch (g_RenderEngine.state) {
+
+        case RENDER_IDLE: {
+
+            // ==========================================
+            // 1. FASE DE RECOLECCIÓN (Llenado de g_DMAQueue)
+            // ==========================================
+
+            // A. ¿Nos quedó pendiente la mitad inferior del repintado masivo?
+            if (g_bPendingBottomHalf) {
+                g_bPendingBottomHalf = false;
+                Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, LCD_HEIGHT / 2,
+LCD_WIDTH, LCD_HEIGHT / 2);
+            }
+            // B. ¿Hay una nueva solicitud de repintado masivo?
+            else if (g_bRequestFullRepaint) {
+                g_bRequestFullRepaint = false;
+                g_bIsBackgroundReady = false;
+
+                formManagerComposite(g_pDrawingBuffer);
+                Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, LCD_WIDTH,
+LCD_HEIGHT / 2); g_bPendingBottomHalf = true;
+            }
+            // C. Sweep the Form Manager for dirty widgets!
+            else if (g_psCurrentForm != NULL) {
+                gfx_GenericWidgetNode *iter = g_psCurrentForm->psWidgets;
+
+                while (iter != NULL) {
+                    bool isDirty = false;
+                    int16_t bboxX = 0, bboxY = 0, bboxW = 0, bboxH = 0;
+
+                    // --- EVALUADOR DE WIDGETS ---
+                    if (iter->sWidget.eWidgetType == WD_TYPE_BUTTON) {
+                        gfx_Button *btn = (gfx_Button *)iter->sWidget.pvWidget;
+                        if (btn->bIsDirty) {
+                            btn->bIsDirty = false;
+                            int16_t textWidth = (btn->label != NULL) ?
+strlen(btn->label) * 10 : 0; int16_t overflowX = 0; if (textWidth >
+btn->size.width) { overflowX = ((textWidth - btn->size.width) / 2) + 4;
+                            }
+                            int16_t w = btn->size.width + (overflowX * 2) +
+(btn->borderWidth * 2) + 4; int16_t h = btn->size.height + (btn->borderWidth *
+2) + 4; int16_t oldX = btn->oldPos.x - overflowX - btn->borderWidth - 2; int16_t
+oldY = btn->oldPos.y - btn->borderWidth - 2; int16_t newX = btn->pos.x -
+overflowX - btn->borderWidth - 2; int16_t newY = btn->pos.y - btn->borderWidth -
+2;
+
+                            bboxX = (oldX < newX) ? oldX : newX;
+                            bboxY = (oldY < newY) ? oldY : newY;
+                            int16_t rightEdge = ((oldX + w) > (newX + w)) ?
+(oldX + w) : (newX + w); int16_t bottomEdge = ((oldY + h) > (newY + h)) ? (oldY
++ h) : (newY + h); bboxW = rightEdge - bboxX; bboxH = bottomEdge - bboxY;
+
+                            btn->oldPos = btn->pos;
+                            isDirty = true;
+                        }
+                    } else if (iter->sWidget.eWidgetType == WD_TYPE_LABEL) {
+                        gfx_Label *lb = (gfx_Label *)iter->sWidget.pvWidget;
+                        if (lb->bIsDirty && lb->text != NULL) {
+                            // (Aquí va tu lógica original de LABEL que omito
+por brevedad pero debes mantenerla) isDirty = true; lb->bIsDirty = false;
+                        }
+                    } else if (iter->sWidget.eWidgetType == WD_TYPE_SLIDER) {
+                        gfx_Slider *sl = (gfx_Slider *)iter->sWidget.pvWidget;
+                        if (sl->bIsDirty) {
+                            // (Aquí va tu lógica original de SLIDER)
+                            sl->bIsDirty = false;
+                            isDirty = true;
+                        }
+                    } else if (iter->sWidget.eWidgetType == WD_TYPE_GRAPH) {
+                        gfx_Graph *graph = (gfx_Graph *)iter->sWidget.pvWidget;
+                        if (graph->bIsDirty) {
+                            bboxX = graph->pos.x - 2; bboxY = graph->pos.y - 2;
+                            bboxW = graph->size.width + 4; bboxH =
+graph->size.height + 4; graph->bIsDirty = false; isDirty = true;
+                        }
+                    } else if (iter->sWidget.eWidgetType == WD_TYPE_MULTIGRAPH)
+{ gfx_MultiGraph *graph = (gfx_MultiGraph *)iter->sWidget.pvWidget; if
+(graph->bIsDirty) { bboxX = graph->pos.x - 2; bboxY = graph->pos.y - 2; bboxW =
+graph->size.width + 4; bboxH = graph->size.height + 4; graph->bIsDirty = false;
+                            isDirty = true;
+                        }
+                    }
+
+                    // --- COMPOSICIÓN PARCIAL ---
+                    if (isDirty) {
+                        if (bboxX % 2 != 0) { bboxX -= 1; bboxW += 1; }
+                        if (bboxW % 2 != 0) { bboxW += 1; }
+
+                        if (bboxH * bboxW > 600 * 250) {
+                            g_bRequestFullRepaint = true;
+                            break; // Rompemos para hacer un Full Repaint en el
+próximo ciclo } else { gfx_compositePartialFrame(g_psCurrentForm,
+g_pDrawingBuffer, bboxX, bboxY - 20, bboxW, bboxH + 20);
+                            Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX,
+bboxY - 20, bboxW, bboxH + 20);
+                        }
+                    }
+                    iter = iter->psNext;
+                }
+            }
+
+            // Chequeo de componentes de hardware puros
+            bHardwareNeedsUpdate = formManagerCheckHardwareDirty();
+
+            // ==========================================
+            // 2. FASE DE EJECUCIÓN BLOQUEANTE (Polling)
+            // ==========================================
+            if (g_DMAQueue.count > 0) {
+
+                // VACIAR TODA LA COLA SIN SALIR DEL ESTADO
+                while (g_DMAQueue.count > 0) {
+
+                    DMARenderJob_t job = g_DMAQueue.jobs[g_DMAQueue.tail];
+                    g_DMAQueue.tail = (g_DMAQueue.tail + 1) % MAX_DMA_JOBS;
+                    g_DMAQueue.count--;
+
+                    HAL_SPI_CS_Enable();
+
+                    uint8_t *pData = (uint8_t *)job.pSrcSDRAM;
+                    uint32_t i = 0;
+
+                    if (g_bIsQuadActive) {
+                        MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
+                        MAP_SSIDataPut(SSI3_BASE, (uint8_t)((job.destRAMG >> 16)
+| 0x80)); // MEM_WRITE MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG >> 8));
+                        MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG));
+
+                        for (; i < job.length; i++) {
+                            MAP_SSIDataPut(SSI3_BASE, pData[i]);
+                        }
+                    } else {
+                        EVE_AddrForWr(job.destRAMG);
+                        for (i = 0; i < job.length; i++) {
+                            HAL_SPI_ReadWrite8(pData[i]);
+                        }
+                    }
+
+                    // Esperar a que los bytes de este bloque salgan físicamente
+                    while (MAP_SSIBusy(SSI3_BASE)) {}
+
+                    HAL_SPI_CS_Disable();
+                }
+
+                // Toda la RAM_G ha sido actualizada, pasamos a renderizar EVE
+                g_RenderEngine.state = RENDER_EVE_COMPONENTS;
+            }
+            else if (bHardwareNeedsUpdate) {
+                // Si la cola estaba vacía pero las gráficas cambiaron
+(Fast-Path) g_RenderEngine.state = RENDER_EVE_COMPONENTS;
+            }
+
+            break;
+        }
+
+        case RENDER_EVE_COMPONENTS:
+            // Construimos la Display List con el nuevo fondo en RAM_G y los
+Overlays API_LIB_BeginCoProList(); API_CMD_DLSTART(); API_CLEAR_COLOR_RGB(0, 0,
+0); API_CLEAR(1, 1, 1);
+
+            // Dibuja la imagen base (G_RAM -> Pantalla)
+            Gfx_displayBitmap();
+
+            // Dibuja gráficas / Líneas / Imágenes SD encima
+            formManagerRenderEVEComponents();
+
+            API_DISPLAY();
+            API_CMD_SWAP();
+            API_LIB_EndCoProList();
+
+            // Limpieza y reinicio
+            bHardwareNeedsUpdate = false;
+
+            if (!g_bPendingBottomHalf) {
+                g_bIsBackgroundReady = true;
+            }
+
+            g_RenderEngine.state = RENDER_IDLE;
+            break;
+
+        default:
+            g_RenderEngine.state = RENDER_IDLE;
+            break;
+    }
+} */
+
+void Gfx_renderTask(void) {
+  // bHardwareNeedsUpdate es estática para recordar si necesitamos
+  // redibujar el hardware después de que termine una transferencia DMA
+  // asíncrona.
+  static bool bHardwareNeedsUpdate = false;
+  bool bSoftwareNeedsUpdate = false;
+
+  switch (g_RenderEngine.state) {
+
+  case RENDER_IDLE:
+    // ---------------------------------------------------------
+    // REGLA DE ORO: Si el bus SPI está siendo utilizado por el DMA
+    // y la ISR en background, abortamos y cedemos el ciclo de CPU.
+    // ---------------------------------------------------------
+    if (g_bSPI_TransferActive) {
+      break;
+    }
+
+    // 2. Override: Repintado Completo (Ej. Cambio de pantalla/tema)
+    if (g_bRequestFullRepaint) {
+      // Compositor monolítico
+      formManagerComposite(g_pDrawingBuffer);
+      // Sobrescribe la cola con un trabajo gigante o una ráfaga de trabajos
+      // para enviar el buffer completo (g_pDrawingBuffer) a la RAM_G.
+      Gfx_sendFullFrame(false);
+      g_RenderEngine.state = RENDER_WAIT_DMA;
+      break;
+    }
+
+    // 1. Recolector de Bounding Boxes (Dirty Rectangles)
+    // Si hay widgets de software modificados, esta función itera sobre ellos,
+    // dibuja en SDRAM su nueva apariencia, y mete automáticamente
+    // los trabajos a la cola g_DMAQueue.
+    formManagerCheckSoftwareDirty();
+
+    // Evalúa si componentes puramente de EVE (gráficas) cambiaron.
+    formManagerCheckHardwareDirty();
+
+    // 3. ¿Tenemos bloques listos para transferir vía uDMA?
+    if (g_DMAQueue.count > 0) {
+
+      // VACIAR TODA LA COLA SIN SALIR DEL ESTADO
+      while (g_DMAQueue.count > 0) {
+
+        DMARenderJob_t job = g_DMAQueue.jobs[g_DMAQueue.tail];
+        g_DMAQueue.tail = (g_DMAQueue.tail + 1) % MAX_DMA_JOBS;
+        g_DMAQueue.count--;
+
+        HAL_SPI_CS_Enable();
+
+        uint8_t *pData = (uint8_t *)job.pSrcSDRAM;
+        uint32_t i = 0;
+
+        if (g_bIsQuadActive) {
+          MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
+          MAP_SSIDataPut(SSI3_BASE,
+                         (uint8_t)((job.destRAMG >> 16) | 0x80)); // MEM_WRITE
+          MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG >> 8));
+          MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG));
+
+          for (; i < job.length; i++) {
+            MAP_SSIDataPut(SSI3_BASE, pData[i]);
+          }
+        } else {
+          EVE_AddrForWr(job.destRAMG);
+          for (i = 0; i < job.length; i++) {
+            HAL_SPI_ReadWrite8(pData[i]);
+          }
+        }
+
+        // Esperar a que los bytes de este bloque salgan físicamente
+        while (MAP_SSIBusy(SSI3_BASE)) {
+        }
+
+        HAL_SPI_CS_Disable();
+      }
+
+      // Toda la RAM_G ha sido actualizada, pasamos a renderizar EVE
+      g_RenderEngine.state = RENDER_EVE_COMPONENTS;
+    }
+    // 4. FAST PATH: Si no hay trabajos DMA, pero el hardware EVE sí cambió.
+    else if (bHardwareNeedsUpdate) {
+      g_RenderEngine.state = RENDER_EVE_COMPONENTS;
+    }
+    break;
+
+  case RENDER_WAIT_DMA:
+    // ---------------------------------------------------------
+    // El CPU está libre. La ISR (SSI3IntHandler) está vaciando
+    // la cola de trabajos DMA en segundo plano.
+    // ---------------------------------------------------------
+
+    // La ISR bajará esta bandera cuando g_DMAQueue.count llegue a 0
+    if (!g_bSPI_TransferActive) {
+      g_RenderEngine.state = RENDER_EVE_COMPONENTS;
+    }
+    break;
+
+  case RENDER_EVE_COMPONENTS:
+    // Construimos la Display List con el nuevo fondo en RAM_G y los Overlays
+    Gfx_showFullFrame();
+    // ---------------------------------------------------------
+    // Limpieza de estado de frame
+    // ---------------------------------------------------------
+    g_bRequestFullRepaint = false;
+    bHardwareNeedsUpdate = false;
+
+    g_RenderEngine.state = RENDER_IDLE;
+    break;
+  }
+}
+
+
+/*
+void Gfx_renderTask(void) {
   // Bandera estática para recordar si nos falta enviar la mitad inferior
   static bool g_bPendingBottomHalf = false;
 
@@ -825,11 +1255,12 @@ void Gfx_RenderTask(void) {
 
   case RENDER_IDLE:
     // 1. If the queue is populated, start the pumping process!
-	//UpdateDisplayWithGraphOverlay(&graphWidget);
+    // UpdateDisplayWithGraphOverlay(&graphWidget);
     if (g_DMAQueue.count > 0) {
-      //DisplayBitmap(); // Depending on your EVE config, call this if needed
+      // Gfx_displayBitmap(); // Depending on your EVE config, call this if
+      // needed
       g_RenderEngine.state = RENDER_SEND_ROW;
-	  //g_bIsBackgroundReady = true;
+      // g_bIsBackgroundReady = true;
       break;
     }
 
@@ -838,7 +1269,7 @@ void Gfx_RenderTask(void) {
       g_bPendingBottomHalf = false;
       Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, LCD_HEIGHT / 2, LCD_WIDTH,
                                LCD_HEIGHT / 2);
-	  
+
       break;
     }
 
@@ -846,7 +1277,7 @@ void Gfx_RenderTask(void) {
     if (g_bRequestFullRepaint) {
       g_bRequestFullRepaint = false;
 
-	  g_bIsBackgroundReady = false;
+      g_bIsBackgroundReady = false;
       formManagerComposite(g_pDrawingBuffer);
       Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, LCD_WIDTH,
                                LCD_HEIGHT / 2);
@@ -870,13 +1301,15 @@ void Gfx_RenderTask(void) {
           if (btn->bIsDirty) {
             btn->bIsDirty = false;
 
-            int16_t textWidth = (btn->label != NULL) ? strlen(btn->label) * 10 : 0;
+            int16_t textWidth =
+                (btn->label != NULL) ? strlen(btn->label) * 10 : 0;
             int16_t overflowX = 0;
             if (textWidth > btn->size.width) {
               overflowX = ((textWidth - btn->size.width) / 2) + 4;
             }
 
-            int16_t w = btn->size.width + (overflowX * 2) + (btn->borderWidth * 2) + 4;
+            int16_t w =
+                btn->size.width + (overflowX * 2) + (btn->borderWidth * 2) + 4;
             int16_t h = btn->size.height + (btn->borderWidth * 2) + 4;
 
             int16_t oldX = btn->oldPos.x - overflowX - btn->borderWidth - 2;
@@ -886,8 +1319,10 @@ void Gfx_RenderTask(void) {
 
             bboxX = (oldX < newX) ? oldX : newX;
             bboxY = (oldY < newY) ? oldY : newY;
-            int16_t rightEdge = ((oldX + w) > (newX + w)) ? (oldX + w) : (newX + w);
-            int16_t bottomEdge = ((oldY + h) > (newY + h)) ? (oldY + h) : (newY + h);
+            int16_t rightEdge =
+                ((oldX + w) > (newX + w)) ? (oldX + w) : (newX + w);
+            int16_t bottomEdge =
+                ((oldY + h) > (newY + h)) ? (oldY + h) : (newY + h);
             bboxW = rightEdge - bboxX;
             bboxH = bottomEdge - bboxY;
 
@@ -900,11 +1335,21 @@ void Gfx_RenderTask(void) {
           if (lb->bIsDirty && lb->text != NULL) {
             int8_t fontId = -1;
             switch (lb->typo) {
-            case TYPO_H1: fontId = g_pCurrentTheme->fonts.h1; break;
-            case TYPO_H2: fontId = g_pCurrentTheme->fonts.h2; break;
-            case TYPO_BODY: fontId = g_pCurrentTheme->fonts.body; break;
-            case TYPO_CAPTION: fontId = g_pCurrentTheme->fonts.caption; break;
-            case TYPO_MONO: fontId = g_pCurrentTheme->fonts.mono; break;
+            case TYPO_H1:
+              fontId = g_pCurrentTheme->fonts.h1;
+              break;
+            case TYPO_H2:
+              fontId = g_pCurrentTheme->fonts.h2;
+              break;
+            case TYPO_BODY:
+              fontId = g_pCurrentTheme->fonts.body;
+              break;
+            case TYPO_CAPTION:
+              fontId = g_pCurrentTheme->fonts.caption;
+              break;
+            case TYPO_MONO:
+              fontId = g_pCurrentTheme->fonts.mono;
+              break;
             }
 
             uint16_t textW = 0, textH = 0;
@@ -915,11 +1360,17 @@ void Gfx_RenderTask(void) {
             int16_t wipeX = lb->pos.x;
             int16_t wipeY = lb->pos.y;
 
-            if (lb->alignment & ALIGN_HCENTER) { wipeX = lb->pos.x - (textW / 2); } 
-            else if (lb->alignment & ALIGN_RIGHT) { wipeX = lb->pos.x - textW; }
+            if (lb->alignment & ALIGN_HCENTER) {
+              wipeX = lb->pos.x - (textW / 2);
+            } else if (lb->alignment & ALIGN_RIGHT) {
+              wipeX = lb->pos.x - textW;
+            }
 
-            if (lb->alignment & ALIGN_VCENTER) { wipeY = lb->pos.y - (textH / 2); } 
-            else if (lb->alignment & ALIGN_BOTTOM) { wipeY = lb->pos.y - textH; }
+            if (lb->alignment & ALIGN_VCENTER) {
+              wipeY = lb->pos.y - (textH / 2);
+            } else if (lb->alignment & ALIGN_BOTTOM) {
+              wipeY = lb->pos.y - textH;
+            }
 
             wipeX -= 1;
             wipeY -= 1;
@@ -929,12 +1380,14 @@ void Gfx_RenderTask(void) {
             if (lb->oldSize.width > 0) {
               bboxX = (wipeX < lb->oldPos.x) ? wipeX : lb->oldPos.x;
               bboxY = (wipeY < lb->oldPos.y) ? wipeY : lb->oldPos.y;
-              int16_t rightEdge = ((wipeX + textW) > (lb->oldPos.x + lb->oldSize.width))
-                                      ? (wipeX + textW)
-                                      : (lb->oldPos.x + lb->oldSize.width);
-              int16_t bottomEdge = ((wipeY + textH) > (lb->oldPos.y + lb->oldSize.height))
-                                       ? (wipeY + textH)
-                                       : (lb->oldPos.y + lb->oldSize.height);
+              int16_t rightEdge =
+                  ((wipeX + textW) > (lb->oldPos.x + lb->oldSize.width))
+                      ? (wipeX + textW)
+                      : (lb->oldPos.x + lb->oldSize.width);
+              int16_t bottomEdge =
+                  ((wipeY + textH) > (lb->oldPos.y + lb->oldSize.height))
+                      ? (wipeY + textH)
+                      : (lb->oldPos.y + lb->oldSize.height);
               bboxW = rightEdge - bboxX;
               bboxH = bottomEdge - bboxY;
             } else {
@@ -956,19 +1409,23 @@ void Gfx_RenderTask(void) {
           gfx_Slider *sl = (gfx_Slider *)iter->sWidget.pvWidget;
 
           if (sl->bIsDirty) {
-            uint16_t thickness = sl->bIsVertical ? sl->size.width : sl->size.height;
-            uint16_t dynamicKnobRadius = thickness * 1.15; // Usando el factor ajustado
-            
+            uint16_t thickness =
+                sl->bIsVertical ? sl->size.width : sl->size.height;
+            uint16_t dynamicKnobRadius =
+                thickness * 1.15; // Usando el factor ajustado
+
             // Calculamos el desbordamiento en función de la orientación
             int16_t knobBleedX = 0;
             int16_t knobBleedY = 0;
 
             if (sl->bIsVertical) {
-                knobBleedX = dynamicKnobRadius - (thickness / 2);
-                if (knobBleedX < 0) knobBleedX = 0;
+              knobBleedX = dynamicKnobRadius - (thickness / 2);
+              if (knobBleedX < 0)
+                knobBleedX = 0;
             } else {
-                knobBleedY = dynamicKnobRadius - (thickness / 2);
-                if (knobBleedY < 0) knobBleedY = 0;
+              knobBleedY = dynamicKnobRadius - (thickness / 2);
+              if (knobBleedY < 0)
+                knobBleedY = 0;
             }
 
             bboxX = sl->pos.x - knobBleedX - 2;
@@ -991,7 +1448,7 @@ void Gfx_RenderTask(void) {
 
             graph->bIsDirty = false;
             isDirty = true;
-            //isDirty = false;
+            // isDirty = false;
           }
         } else if (iter->sWidget.eWidgetType == WD_TYPE_MULTIGRAPH) {
           gfx_MultiGraph *graph = (gfx_MultiGraph *)iter->sWidget.pvWidget;
@@ -1005,10 +1462,9 @@ void Gfx_RenderTask(void) {
 
             graph->bIsDirty = false;
             isDirty = true;
-            //isDirty = false;
+            // isDirty = false;
           }
         }
-
 
         // ==========================================
         // FASE DE COMPOSICIÓN (Fuera de los evaluadores)
@@ -1026,26 +1482,28 @@ void Gfx_RenderTask(void) {
             bboxW += 1;
           }
 
-            // g_bRequestFullRepaint = true;
-            // break; 
+          // g_bRequestFullRepaint = true;
+          // break;
           // --- DECISIÓN: ¿Parcial o Completo? ---
           // Evaluamos si las filas necesarias (bboxH) caben en la cola.
           // Dejamos un pequeño margen de seguridad (ej. 10 trabajos) por si
           // ya había algo encolado previamente.
           if (bboxH * bboxW > 600 * 250) {
-          //if (true) {
-            
+            // if (true) {
+
             // 1. Levantamos la bandera global para el repintado masivo
             g_bRequestFullRepaint = true;
-            
+
             // 2. Abortamos el bucle actual de widgets.
-            // Al hacer break, el iterador se detiene, la función termina su 
-            // evaluación de RENDER_IDLE, y en el próximo ciclo del main, 
-            // entrará directamente al bloque de repintado masivo (paso 3 de tu código).
-            break; 
-            
+            // Al hacer break, el iterador se detiene, la función termina su
+            // evaluación de RENDER_IDLE, y en el próximo ciclo del main,
+            // entrará directamente al bloque de repintado masivo (paso 3 de tu
+            // código).
+            break;
+
           } else {
-            // Si cabe perfectamente en la cola, hacemos el dibujado rápido parcial
+            // Si cabe perfectamente en la cola, hacemos el dibujado rápido
+            // parcial
             gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bboxX,
                                       bboxY - 20, bboxW, bboxH + 20);
 
@@ -1053,7 +1511,7 @@ void Gfx_RenderTask(void) {
                                      bboxH + 20);
           }
         }
-        
+
         // ¡Avance incondicional del iterador (Evita el loop infinito)!
         iter = iter->psNext;
       }
@@ -1069,20 +1527,17 @@ void Gfx_RenderTask(void) {
     // Assert CS LOW
     HAL_SPI_CS_Enable();
 
-	Gfx_Start_SG_Transfer();
-
     // --- CPU Polling Transfer ---
     uint8_t *pData = (uint8_t *)job.pSrcSDRAM;
     uint32_t i = 0;
 
-	
-    
     if (g_bIsQuadActive) {
       // Set bus to Write direction
       MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
 
       // Command + Address bytes
-      MAP_SSIDataPut(SSI3_BASE, (uint8_t)((job.destRAMG >> 16) | 0x80)); // 0x80 = MEM_WRITE
+      MAP_SSIDataPut(SSI3_BASE, (uint8_t)((job.destRAMG >> 16) |
+                                          0x80)); // 0x80 = MEM_WRITE
       MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG >> 8));
       MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG));
 
@@ -1106,14 +1561,15 @@ void Gfx_RenderTask(void) {
     // Pull CS High
     HAL_SPI_CS_Disable();
 
-    // Since the CPU blocked until done, bypass RENDER_WAIT_DMA and jump to the next job
+    // Since the CPU blocked until done, bypass RENDER_WAIT_DMA and jump to the
+    // next job
     if (g_DMAQueue.count > 0) {
       g_RenderEngine.state = RENDER_SEND_ROW;
     } else {
       g_RenderEngine.state = RENDER_FINISHED;
-      
+
       if (!g_bPendingBottomHalf) {
-          g_bIsBackgroundReady = true; 
+        g_bIsBackgroundReady = true;
       }
     }
     break;
@@ -1122,7 +1578,7 @@ void Gfx_RenderTask(void) {
   case RENDER_FINISHED:
     // Left empty/bypassed intentionally for CPU debugging.
     // Acts as a safety net back to IDLE.
-	//formManagerRenderEVEComponents();
+    // formManagerRenderEVEComponents();
     g_RenderEngine.state = RENDER_IDLE;
 
     break;
@@ -1138,4 +1594,4 @@ void Gfx_RenderTask(void) {
     }
     break;
   }
-}
+} */

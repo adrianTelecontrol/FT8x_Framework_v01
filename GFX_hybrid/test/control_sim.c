@@ -158,18 +158,18 @@ void controlSimulatiorTask(void) {
 			val = ((float)rand() / RAND_MAX) * 2.0 - 1.0;
 			val = 25.0f + val;
 			Event_Post(EVT_SYS_T1_VAL_CHANGED, (uint32_t)&val);
-			//t2val = ((float)rand() / RAND_MAX) * 4.0 - 2.0;
-			//t2val = 44.0f + t2val;
-			//Event_Post(EVT_SYS_T2_VAL_CHANGED, (uint32_t)&t2val);
-			//t3val = ((float)rand() / RAND_MAX) * 3.0 - 1.0;
-			//t3val = 33.0f + t3val;
-			//Event_Post(EVT_SYS_T3_VAL_CHANGED, (uint32_t)&t3val);
-			//voutVal = ((float)rand() / RAND_MAX) * 2.0 - 1.0;
-			//voutVal = 5.0f + voutVal;
-			//Event_Post(EVT_SYS_VOUT_VAL_CHANGED, (uint32_t)&voutVal);
-		 //	vinVal = ((float)rand() / RAND_MAX) * 10.0 - 5.0;
-		 //	vinVal = 12.0f + vinVal;
-		 //	Event_Post(EVT_SYS_VIN_VAL_CHANGED, (uint32_t)&vinVal);
+			// t2val = ((float)rand() / RAND_MAX) * 4.0 - 2.0;
+			// t2val = 44.0f + t2val;
+			// Event_Post(EVT_SYS_T2_VAL_CHANGED, (uint32_t)&t2val);
+			// t3val = ((float)rand() / RAND_MAX) * 3.0 - 1.0;
+			// t3val = 33.0f + t3val;
+			// Event_Post(EVT_SYS_T3_VAL_CHANGED, (uint32_t)&t3val);
+			// voutVal = ((float)rand() / RAND_MAX) * 2.0 - 1.0;
+			// voutVal = 5.0f + voutVal;
+			// Event_Post(EVT_SYS_VOUT_VAL_CHANGED, (uint32_t)&voutVal);
+		 // 	vinVal = ((float)rand() / RAND_MAX) * 10.0 - 5.0;
+		 // 	vinVal = 12.0f + vinVal;
+		 // 	Event_Post(EVT_SYS_VIN_VAL_CHANGED, (uint32_t)&vinVal);
 		}
 		if(g_currExecTime % 700 == 0) {
 			t2val = ((float)rand() / RAND_MAX) * 4.0 - 2.0;

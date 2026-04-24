@@ -1718,3 +1718,197 @@ bool gfx_ImageLoadPNG(gfx_Image *img, const uint8_t *pngData, uint32_t dataSize,
 
     return true;
 }
+
+// En gfx_button.c
+gfx_DirtyRect gfx_ButtonProcessState(gfx_Button *btn) {
+    gfx_DirtyRect rect = {0, 0, 0, 0, false};
+
+    if (btn->bIsDirty) {
+        // 1. Aquí actualizas la SDRAM (dibujar el botón presionado/suelto)
+        gfx_drawButton(g_pDrawingBuffer, btn); 
+        
+        // 2. Extraemos el Bounding Box (bbox)
+        rect.x = btn->pos.x;
+        rect.y = btn->pos.y;
+        rect.w = btn->size.width;
+        rect.h = btn->size.height;
+        rect.isDirty = true;
+        
+        // 3. Limpiamos la bandera del widget
+        btn->bIsDirty = false; 
+    }
+    return rect;
+}
+
+// En gfx_label.c
+/*
+gfx_DirtyRect gfx_LabelProcessState(gfx_Label *lbl) {
+    gfx_DirtyRect rect = {0, 0, 0, 0, false};
+    
+    if (lbl->bIsDirty) {
+        gfx_drawLabel(g_pDrawingBuffer, lbl); // Dibuja la nueva fuente
+        
+        // El bounding box del label depende de su tipografía y longitud de texto
+        uint8_t fontId = gfx_ResolveFontId(lbl->typo); // Using the helper we made earlier!
+		gfx_GetStringDimensions(lbl->text, fontId, (uint16_t *)&rect.w, (uint16_t *)&rect.h, 1);
+        rect.x = lbl->pos.x;
+        rect.y = lbl->pos.y - 20;
+        rect.isDirty = true;
+        
+        lbl->bIsDirty = false;
+    }
+    return rect;
+}*/
+
+gfx_DirtyRect gfx_LabelProcessState(gfx_Label *lbl) {
+    gfx_DirtyRect rect = {0, 0, 0, 0, false};
+    
+    if (lbl->bIsDirty && lbl->text != NULL) {
+        // 1. Dibuja primero para actualizar la SDRAM
+        //gfx_drawLabel(g_pDrawingBuffer, lbl); 
+        
+        // 2. Obtener métricas reales de la fuente
+        uint8_t fontId = gfx_ResolveFontId(lbl->typo);
+        uint16_t totalWidth = 0, totalHeight = 0;
+        gfx_GetStringDimensions(lbl->text, fontId, &totalWidth, &totalHeight, 1);
+
+        // Extraemos el "Ascent" (La altura desde la línea base hasta la cima de la letra)
+        BDF_Font_t *sFont = &g_FontCache[fontId].bdfData;
+        int16_t ascent = sFont->yAdvance + sFont->globalYOffset; 
+
+        // 3. Calcular la esquina Top-Left real (startX, startY)
+        int16_t startX = lbl->pos.x;
+        if (lbl->alignment & ALIGN_RIGHT) {
+            startX = lbl->pos.x - totalWidth;
+        } else if (lbl->alignment & ALIGN_HCENTER) {
+            startX = lbl->pos.x - (totalWidth / 2);
+        }
+
+        int16_t startY = lbl->pos.y;
+        if (lbl->alignment & ALIGN_TOP) {
+            startY = lbl->pos.y;
+        } else if (lbl->alignment & ALIGN_VCENTER) {
+            // Si es VCENTER, la mitad del texto queda arriba de Y
+            startY = lbl->pos.y - (totalHeight / 2);
+        } else if (lbl->alignment & ALIGN_BOTTOM) {
+            // Si es BOTTOM, todo el texto queda arriba de Y
+            startY = lbl->pos.y - totalHeight;
+        } else {
+            // DEFAULT (Línea Base): ¡Aquí estaba tu misterioso -20!
+            // Subimos exactamente la medida del 'ascent' de esta fuente
+            startY = lbl->pos.y - ascent;
+        }
+
+        // Añadimos un pequeño margen por antialiasing / sangrado
+        startX -= 2;
+        startY -= 2;
+        totalWidth += 4;
+        totalHeight += 4;
+
+        // 4. Calcular el "Union Rect" (Crucial para no dejar basura gráfica)
+        if (lbl->oldSize.width > 0) {
+            // Encontrar la coordenada más a la izquierda y más arriba
+            rect.x = (startX < lbl->oldPos.x) ? startX : lbl->oldPos.x;
+            rect.y = (startY < lbl->oldPos.y) ? startY : lbl->oldPos.y;
+            
+            // Encontrar la coordenada más a la derecha y más abajo
+            int16_t rightEdge = ((startX + totalWidth) > (lbl->oldPos.x + lbl->oldSize.width)) 
+                                ? (startX + totalWidth) : (lbl->oldPos.x + lbl->oldSize.width);
+            int16_t bottomEdge = ((startY + totalHeight) > (lbl->oldPos.y + lbl->oldSize.height)) 
+                                 ? (startY + totalHeight) : (lbl->oldPos.y + lbl->oldSize.height);
+            
+            rect.w = rightEdge - rect.x;
+            rect.h = bottomEdge - rect.y;
+        } else {
+            // Primera vez dibujado
+            rect.x = startX;
+            rect.y = startY;
+            rect.w = totalWidth;
+            rect.h = totalHeight;
+        }
+
+        // 5. Guardar métricas actuales como "viejas" para el próximo refresco
+        lbl->oldPos.x = startX;
+        lbl->oldPos.y = startY;
+        lbl->oldSize.width = totalWidth;
+        lbl->oldSize.height = totalHeight;
+
+        rect.isDirty = true;
+        lbl->bIsDirty = false;
+    }
+    
+    return rect;
+}
+
+bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
+                               int16_t dirtyX, int16_t dirtyY, 
+                               int16_t dirtyW, int16_t dirtyH) 
+{
+    if (srf == NULL || psPixelBuffer == NULL) return false;
+
+    // 1. Borrar el fondo SOLO en el área sucia
+    // OPTIMIZACIÓN: Sacamos multiplicaciones pesadas del bucle interno
+    pixel16_t bgColor = (pixel16_t)g_pCurrentTheme->palette.background;
+    int16_t y = dirtyY;
+    for (; y < dirtyY + dirtyH; y++) {
+        if (y >= 0 && y < LCD_HEIGHT) {
+            uint32_t rowOffset = y * LCD_WIDTH; 
+
+            int16_t x = dirtyX;
+            for (; x < dirtyX + dirtyW; x++) {
+                if (x >= 0 && x < LCD_WIDTH) {
+                    psPixelBuffer[rowOffset + x] = bgColor;
+                }
+            }
+        }
+    }
+
+    // 2. Iterar sobre todos los widgets de atrás hacia adelante (Z-Order)
+    gfx_GenericWidgetNode *iter = srf->psWidgets;
+    while (iter != NULL) {
+        int16_t objX = 0, objY = 0, objW = 0, objH = 0;
+
+        // Obtener el Bounding Box de este widget
+        if (gfx_getWidgetBounds(&iter->sWidget, &objX, &objY, &objW, &objH)) {
+
+            // 3. Detección de Colisiones (AABB - Axis-Aligned Bounding Box)
+            bool isIntersecting = !(objX > dirtyX + dirtyW || 
+                                    objX + objW < dirtyX ||
+                                    objY > dirtyY + dirtyH || 
+                                    objY + objH < dirtyY);
+
+            // 4. Dibujar SOLO si el widget toca la zona que acabamos de borrar
+            if (isIntersecting) {
+                switch (iter->sWidget.eWidgetType) {
+                    case WD_TYPE_BUTTON:
+                        gfx_drawButton(psPixelBuffer, (gfx_Button *)iter->sWidget.pvWidget);
+                        break;
+                    case WD_TYPE_RECT:
+                        gfx_drawRectangle(psPixelBuffer, (gfx_Rectangle *)iter->sWidget.pvWidget);
+                        break;
+                    case WD_TYPE_LABEL:
+                        gfx_drawLabel(psPixelBuffer, (gfx_Label *)iter->sWidget.pvWidget);
+						//iter = NULL;
+						//continue;
+                        break;
+                    case WD_TYPE_SLIDER:
+                        gfx_drawSlider(psPixelBuffer, (gfx_Slider *)iter->sWidget.pvWidget);
+                        break;
+                    // Gráficas suelen renderizarse por hardware en EVE, 
+                    // pero si las haces en software, se quedan aquí:
+                    case WD_TYPE_GRAPH:
+                        gfx_drawGraph(psPixelBuffer, (gfx_Graph *)iter->sWidget.pvWidget);
+                        break;
+                    case WD_TYPE_MULTIGRAPH:
+                        gfx_drawMultiGraph(psPixelBuffer, (gfx_MultiGraph *)iter->sWidget.pvWidget);
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+        iter = iter->psNext;
+    }
+
+    return true;
+}
