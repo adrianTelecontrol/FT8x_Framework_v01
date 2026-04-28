@@ -10,6 +10,7 @@
 #include "forms_manager.h"
 #include "sdspi_hal.h"
 
+#include "common_widgets.h"
 #include "helpers.h"
 #include "gfx_theme.h"
 #include "event_engine.h"
@@ -25,10 +26,8 @@ int16_t g_i16BootFormID = 0;
 // ==========================================
 // Header
 gfx_GenericWidget tcLogoBgWidget;
-gfx_GenericWidget tcLogoTextWidget;
 gfx_GenericWidget mainTitleWidget;
 gfx_GenericWidget subTitleWidget;
-gfx_GenericWidget tcLogoImgWidget;
 
 // Terminal Logs
 gfx_GenericWidget log1Widget;
@@ -61,11 +60,9 @@ gfx_GenericWidget progressBarWidget;
 // ==========================================
 // Header
 gfx_Rectangle tcLogoBgData;
-gfx_Label     tcLogoTextData;
 gfx_Label     mainTitleData;
 gfx_Label     subTitleData;
 
-gfx_Image tcLogoImgData;
 
 // Terminal Logs (Using TYPO_MONO)
 gfx_Label     log1Data;
@@ -97,6 +94,11 @@ static char pctData[10];
 #define EVE_FREE_RAMG_START		768000 + 200
 
 static const char *TAG = "bootForm";
+
+static char dateStr[60] = "Reading RTC Date.................. [ INFO ] (20/04/2026)";
+static char timeStr[60] = "Reading RTC Time.................. [ INFO ] (16:16:58)";
+
+bool g_bBootAnimationFinished = false;
 
 // ==========================================
 // Callbacks
@@ -136,26 +138,46 @@ static void onStartupCountOkEvent(uint32_t arg) {
 	logTimestamp6Data.bIsDirty = true;
 }
 
-static void onRTCDateOkEvent(uint32_t arg) {
+static void onRTCDateOkEvent(EventParam_t arg) {
+	if(arg.str == NULL) return;
+
+	snprintf(dateStr, sizeof(dateStr), "Reading RTC Date.................. [ INFO ] (%s)", arg.str);
+
 	log7Data.isVisible = true;
 	log7Data.bIsDirty = true;
 	logTimestamp7Data.isVisible = true;
 	logTimestamp7Data.bIsDirty = true;
 }
 
-static void onRTCTimeOkEvent(uint32_t arg) {
+static void onRTCTimeOkEvent(EventParam_t arg) {
+	if(arg.str == NULL) return;
+
+	snprintf(timeStr, sizeof(timeStr), "Reading RTC Time.................. [ INFO ] (%s)", arg.str);
+
 	log8Data.isVisible = true;
 	log8Data.bIsDirty = true;
 	logTimestamp8Data.isVisible = true;
 	logTimestamp8Data.bIsDirty = true;
 }
 
-static void onProgressBarChange(uint32_t arg) {
-	if(arg <= 100) {
-	progressBarData.currentValue = arg;
-	progressBarData.bIsDirty = true;
-	snprintf(pctData, sizeof(pctData), "%d%%", arg);
-	progressPctData.bIsDirty = true;
+static void onRTCTimeChanged(EventParam_t arg) {
+	if(arg.str == NULL || !g_bBootAnimationFinished) return;
+
+	snprintf(timeStr, sizeof(timeStr), "Reading RTC Time.................. [ INFO ] (%s)", arg.str);
+
+	log8Data.isVisible = true;
+	log8Data.bIsDirty = true;
+}
+
+static void onProgressBarChange(EventParam_t arg) {
+	if(arg.ui32 <= 100) {
+		progressBarData.currentValue = arg.ui32;
+		progressBarData.bIsDirty = true;
+		snprintf(pctData, sizeof(pctData), "%d%%", arg.ui32);
+		progressPctData.bIsDirty = true;
+
+		if(arg.ui32 == 100) g_bBootAnimationFinished = true;
+	
 	}
 }
 
@@ -169,20 +191,6 @@ void initBootForm(void)
     g_sBootCanvas.psWidgets = NULL;
 
     // --- HEADER: "TC" Red Square Logo ---
-	tcLogoImgData = (gfx_Image) {
-		.name = "mainLogo",
-		.pos.x = 5,
-		.pos.y = 15,
-		.scale = 1,
-	};
-
-	if(!SDSPI_LoadEVEImage(&tcLogoImgData, "logo_tc.png", EVE_FREE_RAMG_START)) {
-		TIVA_LOGE(TAG, "Fallo al cargar logo_tc.png en EVE");
-	}
-
-	tcLogoImgWidget.eWidgetType = WD_TYPE_IMAGE;
-	tcLogoImgWidget.pvWidget = (void *)&tcLogoImgData;
-
     // --- HEADER: Titles ---
     mainTitleData = (gfx_Label){
         .text = "TELECONTROL SYSTEM BOOT",
@@ -265,14 +273,14 @@ void initBootForm(void)
     logTimestamp7Data = (gfx_Label){ .text = "[0.852]", .name = "t7", .pos.x = logStartX, .pos.y = logStartY + (spacing * 6), .alignment = ALIGN_LEFT, .typo = TYPO_MONO, .style = STYLE_TEXT_MUTED, .isVisible = false  };
     logTimestamp7Widget.eWidgetType = WD_TYPE_LABEL; logTimestamp7Widget.pvWidget = (void *)&logTimestamp7Data;
     
-    log7Data = (gfx_Label){ .text = "Reading RTC Date.................. [ INFO ] (20/04/2026)", .name = "l7", .pos.x = logTextX, .pos.y = logStartY + (spacing * 6), .alignment = ALIGN_LEFT, .typo = TYPO_MONO, .style = STYLE_PRIMARY, .isVisible = false  };
+    log7Data = (gfx_Label){ .text = dateStr, .name = "l7", .pos.x = logTextX, .pos.y = logStartY + (spacing * 6), .alignment = ALIGN_LEFT, .typo = TYPO_MONO, .style = STYLE_PRIMARY, .isVisible = false  };
     log7Widget.eWidgetType = WD_TYPE_LABEL; log7Widget.pvWidget = (void *)&log7Data;
 
     // --- Línea 8 ---
     logTimestamp8Data = (gfx_Label){ .text = "[0.994]", .name = "t8", .pos.x = logStartX, .pos.y = logStartY + (spacing * 7), .alignment = ALIGN_LEFT, .typo = TYPO_MONO, .style = STYLE_TEXT_MUTED, .isVisible = false  };
     logTimestamp8Widget.eWidgetType = WD_TYPE_LABEL; logTimestamp8Widget.pvWidget = (void *)&logTimestamp8Data;
     
-    log8Data = (gfx_Label){ .text = "Reading RTC Time.................. [ INFO ] (16:16:58)", .name = "l8", .pos.x = logTextX, .pos.y = logStartY + (spacing * 7), .alignment = ALIGN_LEFT, .typo = TYPO_MONO, .style = STYLE_PRIMARY, .isVisible = false  };
+    log8Data = (gfx_Label){ .text = timeStr, .name = "l8", .pos.x = logTextX, .pos.y = logStartY + (spacing * 7), .alignment = ALIGN_LEFT, .typo = TYPO_MONO, .style = STYLE_PRIMARY, .isVisible = false  };
     log8Widget.eWidgetType = WD_TYPE_LABEL; log8Widget.pvWidget = (void *)&log8Data;
 
 
@@ -331,12 +339,13 @@ void initBootForm(void)
     // 4. Insertion into Canvas
     // ==========================================
     // Background / Structure
-	//canvasInsertAtTop(&g_sBootCanvas.psWidgets, &tcLogoImgWidget);
+	//useLogoWidget(&g_sBootCanvas);
     canvasInsertAtTop(&g_sBootCanvas.psWidgets, &progressBarWidget);
     
     // Texts and Labels
     canvasInsertAtTop(&g_sBootCanvas.psWidgets, &mainTitleWidget);
     canvasInsertAtTop(&g_sBootCanvas.psWidgets, &subTitleWidget);
+	useLogoWidget(&g_sBootCanvas);
     
     // Terminal Texts
     canvasInsertAtTop(&g_sBootCanvas.psWidgets, &log1Widget);
@@ -370,7 +379,11 @@ void initBootForm(void)
 	Event_Subscribe(EVT_SYS_BOOT_RTC_DATE, (EventHandler_fn)onRTCDateOkEvent);
 	Event_Subscribe(EVT_SYS_BOOT_RTC_TIME, (EventHandler_fn)onRTCTimeOkEvent);
 	Event_Subscribe(EVT_SYS_BOOT_PROGRESS_VALUE_CHANGE, (EventHandler_fn)onProgressBarChange);
+	Event_Subscribe(EVT_SYS_TIME_CHANGED, (EventHandler_fn)onRTCTimeChanged);
+
 
     // Register Form
     g_i16BootFormID = formManagerAddForm(&g_sBootCanvas);
 }
+
+

@@ -56,3 +56,7 @@ bool bitmap_Parser(FIL *psFileObject, BitmapHandler_t *psBitmapHandler);
 void printBitmapHeader(BitmapHeader_t *psBitmapHeader);
 
 #endif // BITMAP_PARSER_H_
+
+
+
+

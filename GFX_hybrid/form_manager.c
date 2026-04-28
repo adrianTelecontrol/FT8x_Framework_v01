@@ -9,11 +9,12 @@
 #include "FT8xx_params.h"
 #include "graphics_engine.h"
 
+#include "forms/common_widgets.h"
 #include "forms/graph_form.h"
 #include "forms/home_form.h"
-#include "forms/navigation_widgets.h"
 #include "forms/boot_form.h"
 #include "forms/dashboard_form.h"
+#include "forms/config_form.h"
 
 #include "forms_manager.h"
 
@@ -37,28 +38,17 @@ int16_t formManagerAddForm(gfx_Canvas *form) {
   return -1;
 }
 
-static void formManagerOnFormChange(uint32_t arg) {
-  int16_t formID = (int16_t)arg;
-
-  if (formID == -1)
-    return;
-
-  g_psCurrentForm = g_psForms[formID];
-
-  Event_Post(EVT_CMD_FULL_REPAINT, 0);
-}
-
-static void formManagerOnNextFormEvent(uint32_t arg) {
+static void formManagerOnNextFormEvent(EventParam_t arg) {
   g_ui16CurrentIndex = (g_ui16CurrentIndex + 1) % g_ui8FormCounter;
 
   g_psCurrentForm = g_psForms[g_ui16CurrentIndex];
 
   g_bIsBackgroundReady = false;
 
-  Event_Post(EVT_CMD_FULL_REPAINT, 0);
+  Event_Post(EVT_CMD_FULL_REPAINT, (EventParam_t){.ptr = NULL});
 }
 
-static void formManagerOnPrevFormEvent(uint32_t arg) {
+static void formManagerOnPrevFormEvent(EventParam_t arg) {
   if (g_ui8FormCounter == 0)
     return; // Protección de seguridad
 
@@ -71,14 +61,28 @@ static void formManagerOnPrevFormEvent(uint32_t arg) {
   
   g_bIsBackgroundReady = false;
 
-  Event_Post(EVT_CMD_FULL_REPAINT, 0);
+  Event_Post(EVT_CMD_FULL_REPAINT, (EventParam_t){.ptr = NULL});
 }
 
-static void onShowHomeFormEvent(uint32_t arg) {
+static void onShowHomeFormEvent(EventParam_t arg) {
 	g_psCurrentForm = g_psForms[g_i16DashboardFormID];
   	g_bIsBackgroundReady = false;
 
-  	Event_Post(EVT_CMD_FULL_REPAINT, 0);
+    Event_Post(EVT_CMD_FULL_REPAINT, (EventParam_t){.ptr = NULL});
+}
+
+static void onShowGraphFormEvent(EventParam_t arg) {
+	g_psCurrentForm = g_psForms[g_i16GraphFormID];
+  	g_bIsBackgroundReady = false;
+
+    Event_Post(EVT_CMD_FULL_REPAINT, (EventParam_t){.ptr = NULL});
+}
+
+static void onShowConfigFormEvent(EventParam_t arg) {
+	g_psCurrentForm = g_psForms[g_i16ConfigFormID];
+  	g_bIsBackgroundReady = false;
+
+    Event_Post(EVT_CMD_FULL_REPAINT, (EventParam_t){.ptr = NULL});
 }
 
 bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture) {
@@ -177,16 +181,20 @@ bool formManagerHandleGesture(TouchStatus touchStatus, gesture_type_e gesture) {
 }
 
 void formManagerInit(void) {
-  initNavigationWidgets();
-  initHomeForm();
+  initCommonWidgets();
+  
+  //initHomeForm();
   initGraphForm();
   initBootForm();
   initDashboardForm();
+  initConfigForm();
   Event_Subscribe(EVT_SYS_NEXT_FORM,
                   (EventHandler_fn)formManagerOnNextFormEvent);
   Event_Subscribe(EVT_SYS_PREV_FORM,
                   (EventHandler_fn)formManagerOnPrevFormEvent);
   Event_Subscribe(EVT_SYS_SHOW_HOME_FORM, (EventHandler_fn)onShowHomeFormEvent);
+  Event_Subscribe(EVT_CMD_SHOW_GRAPH_FORM, (EventHandler_fn)onShowGraphFormEvent);
+  Event_Subscribe(EVT_SYS_SHOW_CONFIG_FORM, (EventHandler_fn)onShowConfigFormEvent);
 
   g_psCurrentForm = g_psForms[g_i16BootFormID];
   // g_psCurrentForm = g_psForms[g_i16GraphFormID];
@@ -197,35 +205,11 @@ void formManagerComposite(pixel16_t *psPixelBuffer) {
 }
 
 void formManagerRenderEVEComponents(void) {
-  if(!g_bIsBackgroundReady) return;
+  //if(!g_bIsBackgroundReady) return;
 
   gfx_GenericWidgetNode *iter = g_psCurrentForm->psWidgets;
   // Lets check if the canvas contains a widget with EVE elements
 
-  while (iter != NULL) {
-    if (iter->sWidget.eWidgetType == WD_TYPE_GRAPH) {
-		gfx_Graph *gf = (gfx_Graph *)iter->sWidget.pvWidget;
-		if(gf->bEVEDirty) {
-			// If one of the components is dirty, then interate the whole
-			// canvas looking for more dirty widgets
-			break;
-		}
-	} else if (iter->sWidget.eWidgetType == WD_TYPE_MULTIGRAPH) {
-		gfx_MultiGraph *gf = (gfx_MultiGraph *)iter->sWidget.pvWidget;
-		if(gf->bEVEDirty) {
-			// If one of the components is dirty, then interate the whole
-			// canvas looking for more dirty widgets
-			break;
-		}
-	} else if(iter->sWidget.eWidgetType == WD_TYPE_IMAGE) { 
-		break;
-	}
-
-    iter = iter->psNext;
-  }
-  if (iter == NULL)
-    return;
-  
   iter = g_psCurrentForm->psWidgets;
   // 1. Iniciamos una nueva Display List
   // API_LIB_BeginCoProList();
@@ -253,17 +237,16 @@ void formManagerRenderEVEComponents(void) {
   while (iter != NULL) {
     if (iter->sWidget.eWidgetType == WD_TYPE_GRAPH) {
 		gfx_Graph *gf = (gfx_Graph *)iter->sWidget.pvWidget;
-		if(gf->bEVEDirty) {
       		gfx_GraphRenderEVEComponents((gfx_Graph *)iter->sWidget.pvWidget);
 			gf->bEVEDirty = false;
 
     		API_LIB_EndCoProList();
     		API_LIB_AwaitCoProEmpty();
     		API_LIB_BeginCoProList();
-		}
     } else if (iter->sWidget.eWidgetType == WD_TYPE_MULTIGRAPH) {
 		gfx_MultiGraph *gf = (gfx_MultiGraph *)iter->sWidget.pvWidget;
-		if(gf->bEVEDirty) {
+		//if(gf->bEVEDirty) 
+		{
       		gfx_MultigraphRenderEVEComponents(gf);
 			gf->bEVEDirty = false;
 
@@ -314,6 +297,20 @@ bool formManagerCheckSoftwareDirty(void) {
 					gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bbox.x, bbox.y, bbox.w, bbox.h);
 				}
                 break;
+			}
+			case WD_TYPE_SLIDER: {
+				if(((gfx_Slider *)iter->sWidget.pvWidget)->bIsDirty) {
+					bbox = gfx_SliderProcessState((gfx_Slider *)iter->sWidget.pvWidget);
+					gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bbox.x, bbox.y, bbox.w, bbox.h);
+				}
+				break;
+			}
+			case WD_TYPE_GRAPH_OVERLAY: {
+				if(((gfx_GraphOverlay *)iter->sWidget.pvWidget)->bIsDirty) {
+					bbox = gfx_GraphOverlayProcessState((gfx_GraphOverlay *)iter->sWidget.pvWidget);
+					gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bbox.x, bbox.y, bbox.w, bbox.h);
+				}
+				break;
 			}
             // ... otros widgets
         }

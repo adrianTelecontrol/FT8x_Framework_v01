@@ -88,11 +88,11 @@ static void onChangeThemeEvent(uint32_t arg) {
 
     Theme_SetFontFamily(activeFamily);
 
-	Event_Post(EVT_CMD_FULL_REPAINT, 0);
+	Event_Post(EVT_CMD_FULL_REPAINT, (EventParam_t){.ptr = NULL});
 }
 
 // Función de ayuda para resolver el fontId basado en el tema actual
-int8_t gfx_ResolveFontId(gfx_TypoStyle_e typo) {
+int8_t Theme_ResolveFontId(gfx_TypoStyle_e typo) {
     if (g_pCurrentTheme == NULL) return -1;
     
     switch (typo) {

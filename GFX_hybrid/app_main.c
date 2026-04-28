@@ -45,6 +45,7 @@
 #include "event_engine.h"
 #include "video_engine.h"
 #include "hal_eeprom.h"
+#include "rtc_module.h"
 #include "test/control_sim.h"
 
 #include "draw_bitmap.h"
@@ -111,6 +112,9 @@ int main(void) {
   // Configure the UART for system output
   ConfigureUART();
 
+  // Init RTC
+  initRTCModule();
+
   TIVA_LOGI(TASK_NAME, "Starting application...");
 
   Gfx_initEngine(LCD_WIDTH, LCD_HEIGHT);
@@ -148,14 +152,14 @@ int main(void) {
   Theme_Init(true);
   Theme_SetModeHigh(true);
   // Play fullscreen with no-tear and audio
-  // EVE_VideoResult_t eResult = EVE_Video_Play(
-  //     "s_hd2.avi",
-  //     OPT_FULLSCREEN | OPT_NOTEAR | OPT_MEDIAFIFO
-  // );
+  EVE_VideoResult_t eResult = EVE_Video_Play(
+      "s_hd2.avi",
+      OPT_FULLSCREEN | OPT_NOTEAR | OPT_MEDIAFIFO
+  );
   
-  // if (eResult != EVE_VIDEO_OK) {
-  //     TIVA_LOGE("MAIN", "Video failed: %s", EVE_Video_ResultStr(eResult));
-  // }
+  if (eResult != EVE_VIDEO_OK) {
+      TIVA_LOGE("MAIN", "Video failed: %s", EVE_Video_ResultStr(eResult));
+  }
   Theme_SetModeLow(true);
 
   formManagerInit();
@@ -172,7 +176,7 @@ int main(void) {
 
   gestureEngineInit();
 
-  Event_Post(EVT_CMD_START_BOOT_SEQ, 0);
+  Event_Post(EVT_CMD_START_BOOT_SEQ, (EventParam_t){.ptr = NULL});
   while (1) {
 	Gfx_renderTask();
 

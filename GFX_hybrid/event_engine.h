@@ -9,6 +9,7 @@ typedef enum {
 	EVT_CMD_CHANGE_THEME = 0,
 	EVT_CMD_FULL_REPAINT,
 	EVT_CMD_START_BOOT_SEQ,
+	EVT_CMD_SHOW_GRAPH_FORM,
 	// Updates from System -> GUI
 	EVT_SYS_COUNTER_CHANGED,
 	EVT_SYS_COUNTER2_CHANGED,
@@ -28,23 +29,35 @@ typedef enum {
 	EVT_SYS_BOOT_PROGRESS_VALUE_CHANGE,
 	EVT_SYS_BOOT_FINISHED,
 	EVT_SYS_SHOW_HOME_FORM,
+	EVT_SYS_SHOW_CONFIG_FORM,
 	EVT_SYS_T1_VAL_CHANGED,
 	EVT_SYS_T2_VAL_CHANGED,
 	EVT_SYS_T3_VAL_CHANGED,
 	EVT_SYS_VIN_VAL_CHANGED,
 	EVT_SYS_VOUT_VAL_CHANGED,
+	EVT_SYS_STATUS_CHANGED,
+	EVT_SYS_TIME_CHANGED,
+	EVT_SYS_DATE_CHANGED,
 	
 	NUM_EVENTS,
 } EventID_e;
 
+typedef union {
+	uint32_t ui32;
+	int32_t i32;
+	float f32;
+	void *ptr;
+	const char *str;
+} EventParam_t;
+
 typedef struct {
 	EventID_e id;
-	int32_t arg;
+	EventParam_t arg;
 } SystemEvent_t;
 
-typedef void (*EventHandler_fn)(uint32_t arg);
+typedef void (*EventHandler_fn)(EventParam_t arg);
 
-bool Event_Post(EventID_e id, int32_t arg);
+bool Event_Post(EventID_e id, EventParam_t arg);
 
 bool Event_Receive(SystemEvent_t *pEvent);
 
@@ -54,3 +67,6 @@ bool Event_Dispatch(void);
 bool Event_Init(void);
 
 #endif	//EVENT_ENGINE_H
+
+
+

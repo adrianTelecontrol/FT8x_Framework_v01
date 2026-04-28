@@ -110,7 +110,7 @@ void SSI3IntHandler(void) {
     uint32_t ui32Status = MAP_SSIIntStatus(SSI3_BASE, true);
     MAP_SSIIntClear(SSI3_BASE, ui32Status);
 
-	if (MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) return;
+        if (MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) return;
 
     while (MAP_SSIBusy(SSI3_BASE));
     HAL_SPI_CS_Disable();
@@ -131,8 +131,8 @@ void SSI3IntHandler(void) {
 
             if (g_bIsQuadActive) {
                 MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-                MAP_SSIDataPut(SSI3_BASE, (uint8_t)((nextJob.destRAMG >> 16) | 0x80));
-                MAP_SSIDataPut(SSI3_BASE, (uint8_t)(nextJob.destRAMG >> 8));
+                MAP_SSIDataPut(SSI3_BASE, (uint8_t)((nextJob.destRAMG >> 16) |
+0x80)); MAP_SSIDataPut(SSI3_BASE, (uint8_t)(nextJob.destRAMG >> 8));
                 MAP_SSIDataPut(SSI3_BASE, (uint8_t)(nextJob.destRAMG));
             } else {
                 EVE_AddrForWr(nextJob.destRAMG);
@@ -159,7 +159,7 @@ void SSI3IntHandler(void) {
 
             MAP_uDMAChannelEnable(UDMA_CH14_SSI3RX);
             MAP_uDMAChannelEnable(UDMA_CH15_SSI3TX);
-            return;   
+            return;
         }
     }
 
@@ -704,7 +704,9 @@ void Gfx_Start_SG_Transfer(bool bIsBlocking) {
   }
 }
 
-static void onFullRepaintEvent(uint32_t args) { g_bRequestFullRepaint = true; }
+static void onFullRepaintEvent(EventParam_t evt) {
+  g_bRequestFullRepaint = true;
+}
 
 // --- INITIALIZATION ---
 bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight) {
@@ -720,7 +722,7 @@ bool Gfx_initEngine(const uint16_t ui16ResWidth, const uint16_t ui16ResHeight) {
   g_pDrawingBuffer = g_pBufferA;
   g_pSendingBuffer = g_pBufferB;
 
-  Event_Subscribe(EVT_CMD_FULL_REPAINT, onFullRepaintEvent);
+  Event_Subscribe(EVT_CMD_FULL_REPAINT, (EventHandler_fn)onFullRepaintEvent);
 
   return true;
 }
@@ -808,7 +810,7 @@ bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
     // 1. Obtener dimensiones dinámicas del texto
     uint16_t textWidth = 0;
     uint16_t textHeight = 0;
-    int8_t fontId = gfx_ResolveFontId(btn->typo);
+    int8_t fontId = Theme_ResolveFontId(btn->typo);
 
     if (btn->label != NULL && fontId >= 0) {
       gfx_GetStringDimensions(btn->label, fontId, &textWidth, &textHeight, 1);
@@ -847,7 +849,7 @@ bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
 
     // 1. Obtener dimensiones dinámicas
     uint16_t textW = 0, textH = 0;
-    uint8_t fontId = gfx_ResolveFontId(lb->typo);
+    uint8_t fontId = Theme_ResolveFontId(lb->typo);
 
     if (lb->text != NULL) {
       gfx_GetStringDimensions(lb->text, fontId, &textW, &textH, 1);
@@ -918,7 +920,15 @@ bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
     *h = graph->size.height;
     return true;
   }
-
+  // En form_manager.c (dentro de gfx_getWidgetBounds)
+  case WD_TYPE_GRAPH_OVERLAY: {
+    gfx_GraphOverlay *ovl = (gfx_GraphOverlay *)widget->pvWidget;
+    *x = ovl->pos.x;
+    *y = ovl->pos.y;
+    *w = ovl->size.width;
+    *h = ovl->size.height;
+    return true;
+  }
   default:
     return false;
   }
@@ -941,198 +951,6 @@ void Gfx_showFullFrame(void) {
   API_LIB_EndCoProList();
 }
 
-/*
-void Gfx_renderTask(void) {
-    // Bandera estática para recordar si nos falta enviar la mitad inferior
-    static bool g_bPendingBottomHalf = false;
-    static bool bHardwareNeedsUpdate = false;
-
-    switch (g_RenderEngine.state) {
-
-        case RENDER_IDLE: {
-
-            // ==========================================
-            // 1. FASE DE RECOLECCIÓN (Llenado de g_DMAQueue)
-            // ==========================================
-
-            // A. ¿Nos quedó pendiente la mitad inferior del repintado masivo?
-            if (g_bPendingBottomHalf) {
-                g_bPendingBottomHalf = false;
-                Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, LCD_HEIGHT / 2,
-LCD_WIDTH, LCD_HEIGHT / 2);
-            }
-            // B. ¿Hay una nueva solicitud de repintado masivo?
-            else if (g_bRequestFullRepaint) {
-                g_bRequestFullRepaint = false;
-                g_bIsBackgroundReady = false;
-
-                formManagerComposite(g_pDrawingBuffer);
-                Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, LCD_WIDTH,
-LCD_HEIGHT / 2); g_bPendingBottomHalf = true;
-            }
-            // C. Sweep the Form Manager for dirty widgets!
-            else if (g_psCurrentForm != NULL) {
-                gfx_GenericWidgetNode *iter = g_psCurrentForm->psWidgets;
-
-                while (iter != NULL) {
-                    bool isDirty = false;
-                    int16_t bboxX = 0, bboxY = 0, bboxW = 0, bboxH = 0;
-
-                    // --- EVALUADOR DE WIDGETS ---
-                    if (iter->sWidget.eWidgetType == WD_TYPE_BUTTON) {
-                        gfx_Button *btn = (gfx_Button *)iter->sWidget.pvWidget;
-                        if (btn->bIsDirty) {
-                            btn->bIsDirty = false;
-                            int16_t textWidth = (btn->label != NULL) ?
-strlen(btn->label) * 10 : 0; int16_t overflowX = 0; if (textWidth >
-btn->size.width) { overflowX = ((textWidth - btn->size.width) / 2) + 4;
-                            }
-                            int16_t w = btn->size.width + (overflowX * 2) +
-(btn->borderWidth * 2) + 4; int16_t h = btn->size.height + (btn->borderWidth *
-2) + 4; int16_t oldX = btn->oldPos.x - overflowX - btn->borderWidth - 2; int16_t
-oldY = btn->oldPos.y - btn->borderWidth - 2; int16_t newX = btn->pos.x -
-overflowX - btn->borderWidth - 2; int16_t newY = btn->pos.y - btn->borderWidth -
-2;
-
-                            bboxX = (oldX < newX) ? oldX : newX;
-                            bboxY = (oldY < newY) ? oldY : newY;
-                            int16_t rightEdge = ((oldX + w) > (newX + w)) ?
-(oldX + w) : (newX + w); int16_t bottomEdge = ((oldY + h) > (newY + h)) ? (oldY
-+ h) : (newY + h); bboxW = rightEdge - bboxX; bboxH = bottomEdge - bboxY;
-
-                            btn->oldPos = btn->pos;
-                            isDirty = true;
-                        }
-                    } else if (iter->sWidget.eWidgetType == WD_TYPE_LABEL) {
-                        gfx_Label *lb = (gfx_Label *)iter->sWidget.pvWidget;
-                        if (lb->bIsDirty && lb->text != NULL) {
-                            // (Aquí va tu lógica original de LABEL que omito
-por brevedad pero debes mantenerla) isDirty = true; lb->bIsDirty = false;
-                        }
-                    } else if (iter->sWidget.eWidgetType == WD_TYPE_SLIDER) {
-                        gfx_Slider *sl = (gfx_Slider *)iter->sWidget.pvWidget;
-                        if (sl->bIsDirty) {
-                            // (Aquí va tu lógica original de SLIDER)
-                            sl->bIsDirty = false;
-                            isDirty = true;
-                        }
-                    } else if (iter->sWidget.eWidgetType == WD_TYPE_GRAPH) {
-                        gfx_Graph *graph = (gfx_Graph *)iter->sWidget.pvWidget;
-                        if (graph->bIsDirty) {
-                            bboxX = graph->pos.x - 2; bboxY = graph->pos.y - 2;
-                            bboxW = graph->size.width + 4; bboxH =
-graph->size.height + 4; graph->bIsDirty = false; isDirty = true;
-                        }
-                    } else if (iter->sWidget.eWidgetType == WD_TYPE_MULTIGRAPH)
-{ gfx_MultiGraph *graph = (gfx_MultiGraph *)iter->sWidget.pvWidget; if
-(graph->bIsDirty) { bboxX = graph->pos.x - 2; bboxY = graph->pos.y - 2; bboxW =
-graph->size.width + 4; bboxH = graph->size.height + 4; graph->bIsDirty = false;
-                            isDirty = true;
-                        }
-                    }
-
-                    // --- COMPOSICIÓN PARCIAL ---
-                    if (isDirty) {
-                        if (bboxX % 2 != 0) { bboxX -= 1; bboxW += 1; }
-                        if (bboxW % 2 != 0) { bboxW += 1; }
-
-                        if (bboxH * bboxW > 600 * 250) {
-                            g_bRequestFullRepaint = true;
-                            break; // Rompemos para hacer un Full Repaint en el
-próximo ciclo } else { gfx_compositePartialFrame(g_psCurrentForm,
-g_pDrawingBuffer, bboxX, bboxY - 20, bboxW, bboxH + 20);
-                            Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX,
-bboxY - 20, bboxW, bboxH + 20);
-                        }
-                    }
-                    iter = iter->psNext;
-                }
-            }
-
-            // Chequeo de componentes de hardware puros
-            bHardwareNeedsUpdate = formManagerCheckHardwareDirty();
-
-            // ==========================================
-            // 2. FASE DE EJECUCIÓN BLOQUEANTE (Polling)
-            // ==========================================
-            if (g_DMAQueue.count > 0) {
-
-                // VACIAR TODA LA COLA SIN SALIR DEL ESTADO
-                while (g_DMAQueue.count > 0) {
-
-                    DMARenderJob_t job = g_DMAQueue.jobs[g_DMAQueue.tail];
-                    g_DMAQueue.tail = (g_DMAQueue.tail + 1) % MAX_DMA_JOBS;
-                    g_DMAQueue.count--;
-
-                    HAL_SPI_CS_Enable();
-
-                    uint8_t *pData = (uint8_t *)job.pSrcSDRAM;
-                    uint32_t i = 0;
-
-                    if (g_bIsQuadActive) {
-                        MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-                        MAP_SSIDataPut(SSI3_BASE, (uint8_t)((job.destRAMG >> 16)
-| 0x80)); // MEM_WRITE MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG >> 8));
-                        MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG));
-
-                        for (; i < job.length; i++) {
-                            MAP_SSIDataPut(SSI3_BASE, pData[i]);
-                        }
-                    } else {
-                        EVE_AddrForWr(job.destRAMG);
-                        for (i = 0; i < job.length; i++) {
-                            HAL_SPI_ReadWrite8(pData[i]);
-                        }
-                    }
-
-                    // Esperar a que los bytes de este bloque salgan físicamente
-                    while (MAP_SSIBusy(SSI3_BASE)) {}
-
-                    HAL_SPI_CS_Disable();
-                }
-
-                // Toda la RAM_G ha sido actualizada, pasamos a renderizar EVE
-                g_RenderEngine.state = RENDER_EVE_COMPONENTS;
-            }
-            else if (bHardwareNeedsUpdate) {
-                // Si la cola estaba vacía pero las gráficas cambiaron
-(Fast-Path) g_RenderEngine.state = RENDER_EVE_COMPONENTS;
-            }
-
-            break;
-        }
-
-        case RENDER_EVE_COMPONENTS:
-            // Construimos la Display List con el nuevo fondo en RAM_G y los
-Overlays API_LIB_BeginCoProList(); API_CMD_DLSTART(); API_CLEAR_COLOR_RGB(0, 0,
-0); API_CLEAR(1, 1, 1);
-
-            // Dibuja la imagen base (G_RAM -> Pantalla)
-            Gfx_displayBitmap();
-
-            // Dibuja gráficas / Líneas / Imágenes SD encima
-            formManagerRenderEVEComponents();
-
-            API_DISPLAY();
-            API_CMD_SWAP();
-            API_LIB_EndCoProList();
-
-            // Limpieza y reinicio
-            bHardwareNeedsUpdate = false;
-
-            if (!g_bPendingBottomHalf) {
-                g_bIsBackgroundReady = true;
-            }
-
-            g_RenderEngine.state = RENDER_IDLE;
-            break;
-
-        default:
-            g_RenderEngine.state = RENDER_IDLE;
-            break;
-    }
-} */
-
 void Gfx_renderTask(void) {
   // bHardwareNeedsUpdate es estática para recordar si necesitamos
   // redibujar el hardware después de que termine una transferencia DMA
@@ -1148,7 +966,7 @@ void Gfx_renderTask(void) {
     // y la ISR en background, abortamos y cedemos el ciclo de CPU.
     // ---------------------------------------------------------
     if (g_bSPI_TransferActive) {
-      break;
+      return;
     }
 
     // 2. Override: Repintado Completo (Ej. Cambio de pantalla/tema)
@@ -1159,6 +977,7 @@ void Gfx_renderTask(void) {
       // para enviar el buffer completo (g_pDrawingBuffer) a la RAM_G.
       Gfx_sendFullFrame(false);
       g_RenderEngine.state = RENDER_WAIT_DMA;
+      g_bRequestFullRepaint = false;
       break;
     }
 
@@ -1169,7 +988,7 @@ void Gfx_renderTask(void) {
     formManagerCheckSoftwareDirty();
 
     // Evalúa si componentes puramente de EVE (gráficas) cambiaron.
-    formManagerCheckHardwareDirty();
+    bHardwareNeedsUpdate = formManagerCheckHardwareDirty();
 
     // 3. ¿Tenemos bloques listos para transferir vía uDMA?
     if (g_DMAQueue.count > 0) {
@@ -1232,366 +1051,19 @@ void Gfx_renderTask(void) {
     break;
 
   case RENDER_EVE_COMPONENTS:
+
+    if (g_bRequestFullRepaint) {
+      g_RenderEngine.state = RENDER_IDLE;
+      break;
+    }
     // Construimos la Display List con el nuevo fondo en RAM_G y los Overlays
     Gfx_showFullFrame();
     // ---------------------------------------------------------
     // Limpieza de estado de frame
     // ---------------------------------------------------------
-    g_bRequestFullRepaint = false;
     bHardwareNeedsUpdate = false;
 
     g_RenderEngine.state = RENDER_IDLE;
     break;
   }
 }
-
-
-/*
-void Gfx_renderTask(void) {
-  // Bandera estática para recordar si nos falta enviar la mitad inferior
-  static bool g_bPendingBottomHalf = false;
-
-  switch (g_RenderEngine.state) {
-
-  case RENDER_IDLE:
-    // 1. If the queue is populated, start the pumping process!
-    // UpdateDisplayWithGraphOverlay(&graphWidget);
-    if (g_DMAQueue.count > 0) {
-      // Gfx_displayBitmap(); // Depending on your EVE config, call this if
-      // needed
-      g_RenderEngine.state = RENDER_SEND_ROW;
-      // g_bIsBackgroundReady = true;
-      break;
-    }
-
-    // 2. ¿Nos quedó pendiente la mitad inferior del repintado masivo?
-    if (g_bPendingBottomHalf) {
-      g_bPendingBottomHalf = false;
-      Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, LCD_HEIGHT / 2, LCD_WIDTH,
-                               LCD_HEIGHT / 2);
-
-      break;
-    }
-
-    // 3. ¿Hay una nueva solicitud de repintado masivo?
-    if (g_bRequestFullRepaint) {
-      g_bRequestFullRepaint = false;
-
-      g_bIsBackgroundReady = false;
-      formManagerComposite(g_pDrawingBuffer);
-      Gfx_BuildSg_For_Segments(g_pDrawingBuffer, 0, 0, LCD_WIDTH,
-                               LCD_HEIGHT / 2);
-      g_bPendingBottomHalf = true;
-      break;
-    }
-
-    // 4. Sweep the Form Manager for dirty widgets!
-    if (g_psCurrentForm != NULL) {
-      gfx_GenericWidgetNode *iter = g_psCurrentForm->psWidgets;
-
-      while (iter != NULL) {
-        bool isDirty = false;
-        int16_t bboxX = 0, bboxY = 0, bboxW = 0, bboxH = 0;
-
-        // ==========================================
-        // EVALUADOR DE WIDGETS
-        // ==========================================
-        if (iter->sWidget.eWidgetType == WD_TYPE_BUTTON) {
-          gfx_Button *btn = (gfx_Button *)iter->sWidget.pvWidget;
-          if (btn->bIsDirty) {
-            btn->bIsDirty = false;
-
-            int16_t textWidth =
-                (btn->label != NULL) ? strlen(btn->label) * 10 : 0;
-            int16_t overflowX = 0;
-            if (textWidth > btn->size.width) {
-              overflowX = ((textWidth - btn->size.width) / 2) + 4;
-            }
-
-            int16_t w =
-                btn->size.width + (overflowX * 2) + (btn->borderWidth * 2) + 4;
-            int16_t h = btn->size.height + (btn->borderWidth * 2) + 4;
-
-            int16_t oldX = btn->oldPos.x - overflowX - btn->borderWidth - 2;
-            int16_t oldY = btn->oldPos.y - btn->borderWidth - 2;
-            int16_t newX = btn->pos.x - overflowX - btn->borderWidth - 2;
-            int16_t newY = btn->pos.y - btn->borderWidth - 2;
-
-            bboxX = (oldX < newX) ? oldX : newX;
-            bboxY = (oldY < newY) ? oldY : newY;
-            int16_t rightEdge =
-                ((oldX + w) > (newX + w)) ? (oldX + w) : (newX + w);
-            int16_t bottomEdge =
-                ((oldY + h) > (newY + h)) ? (oldY + h) : (newY + h);
-            bboxW = rightEdge - bboxX;
-            bboxH = bottomEdge - bboxY;
-
-            btn->oldPos = btn->pos;
-            isDirty = true;
-          }
-        } else if (iter->sWidget.eWidgetType == WD_TYPE_LABEL) {
-          gfx_Label *lb = (gfx_Label *)iter->sWidget.pvWidget;
-
-          if (lb->bIsDirty && lb->text != NULL) {
-            int8_t fontId = -1;
-            switch (lb->typo) {
-            case TYPO_H1:
-              fontId = g_pCurrentTheme->fonts.h1;
-              break;
-            case TYPO_H2:
-              fontId = g_pCurrentTheme->fonts.h2;
-              break;
-            case TYPO_BODY:
-              fontId = g_pCurrentTheme->fonts.body;
-              break;
-            case TYPO_CAPTION:
-              fontId = g_pCurrentTheme->fonts.caption;
-              break;
-            case TYPO_MONO:
-              fontId = g_pCurrentTheme->fonts.mono;
-              break;
-            }
-
-            uint16_t textW = 0, textH = 0;
-            if (fontId >= 0) {
-              gfx_GetStringDimensions(lb->text, fontId, &textW, &textH, 1);
-            }
-
-            int16_t wipeX = lb->pos.x;
-            int16_t wipeY = lb->pos.y;
-
-            if (lb->alignment & ALIGN_HCENTER) {
-              wipeX = lb->pos.x - (textW / 2);
-            } else if (lb->alignment & ALIGN_RIGHT) {
-              wipeX = lb->pos.x - textW;
-            }
-
-            if (lb->alignment & ALIGN_VCENTER) {
-              wipeY = lb->pos.y - (textH / 2);
-            } else if (lb->alignment & ALIGN_BOTTOM) {
-              wipeY = lb->pos.y - textH;
-            }
-
-            wipeX -= 1;
-            wipeY -= 1;
-            textW += 8;
-            textH += 4;
-
-            if (lb->oldSize.width > 0) {
-              bboxX = (wipeX < lb->oldPos.x) ? wipeX : lb->oldPos.x;
-              bboxY = (wipeY < lb->oldPos.y) ? wipeY : lb->oldPos.y;
-              int16_t rightEdge =
-                  ((wipeX + textW) > (lb->oldPos.x + lb->oldSize.width))
-                      ? (wipeX + textW)
-                      : (lb->oldPos.x + lb->oldSize.width);
-              int16_t bottomEdge =
-                  ((wipeY + textH) > (lb->oldPos.y + lb->oldSize.height))
-                      ? (wipeY + textH)
-                      : (lb->oldPos.y + lb->oldSize.height);
-              bboxW = rightEdge - bboxX;
-              bboxH = bottomEdge - bboxY;
-            } else {
-              bboxX = wipeX;
-              bboxY = wipeY;
-              bboxW = textW;
-              bboxH = textH;
-            }
-
-            lb->oldPos.x = wipeX;
-            lb->oldPos.y = wipeY;
-            lb->oldSize.width = textW;
-            lb->oldSize.height = textH;
-
-            isDirty = true;
-            lb->bIsDirty = false;
-          }
-        } else if (iter->sWidget.eWidgetType == WD_TYPE_SLIDER) {
-          gfx_Slider *sl = (gfx_Slider *)iter->sWidget.pvWidget;
-
-          if (sl->bIsDirty) {
-            uint16_t thickness =
-                sl->bIsVertical ? sl->size.width : sl->size.height;
-            uint16_t dynamicKnobRadius =
-                thickness * 1.15; // Usando el factor ajustado
-
-            // Calculamos el desbordamiento en función de la orientación
-            int16_t knobBleedX = 0;
-            int16_t knobBleedY = 0;
-
-            if (sl->bIsVertical) {
-              knobBleedX = dynamicKnobRadius - (thickness / 2);
-              if (knobBleedX < 0)
-                knobBleedX = 0;
-            } else {
-              knobBleedY = dynamicKnobRadius - (thickness / 2);
-              if (knobBleedY < 0)
-                knobBleedY = 0;
-            }
-
-            bboxX = sl->pos.x - knobBleedX - 2;
-            bboxY = sl->pos.y - knobBleedY - 2;
-            bboxW = sl->size.width + (knobBleedX * 2) + 4;
-            bboxH = sl->size.height + (knobBleedY * 2) + 4;
-
-            sl->bIsDirty = false;
-            isDirty = true;
-          }
-        } else if (iter->sWidget.eWidgetType == WD_TYPE_GRAPH) {
-          gfx_Graph *graph = (gfx_Graph *)iter->sWidget.pvWidget;
-
-          if (graph->bIsDirty) {
-            // La gráfica está perfectamente autocontenida
-            bboxX = graph->pos.x - 2;
-            bboxY = graph->pos.y - 2;
-            bboxW = graph->size.width + 4;
-            bboxH = graph->size.height + 4;
-
-            graph->bIsDirty = false;
-            isDirty = true;
-            // isDirty = false;
-          }
-        } else if (iter->sWidget.eWidgetType == WD_TYPE_MULTIGRAPH) {
-          gfx_MultiGraph *graph = (gfx_MultiGraph *)iter->sWidget.pvWidget;
-
-          if (graph->bIsDirty) {
-            // La gráfica está perfectamente autocontenida
-            bboxX = graph->pos.x - 2;
-            bboxY = graph->pos.y - 2;
-            bboxW = graph->size.width + 4;
-            bboxH = graph->size.height + 4;
-
-            graph->bIsDirty = false;
-            isDirty = true;
-            // isDirty = false;
-          }
-        }
-
-        // ==========================================
-        // FASE DE COMPOSICIÓN (Fuera de los evaluadores)
-        // ==========================================
-        // ==========================================
-        // FASE DE COMPOSICIÓN (Fuera de los evaluadores)
-        // ==========================================
-        if (isDirty) {
-          // Alineación a pares (Requisito de muchos controladores DMA/LCD)
-          if (bboxX % 2 != 0) {
-            bboxX -= 1;
-            bboxW += 1;
-          }
-          if (bboxW % 2 != 0) {
-            bboxW += 1;
-          }
-
-          // g_bRequestFullRepaint = true;
-          // break;
-          // --- DECISIÓN: ¿Parcial o Completo? ---
-          // Evaluamos si las filas necesarias (bboxH) caben en la cola.
-          // Dejamos un pequeño margen de seguridad (ej. 10 trabajos) por si
-          // ya había algo encolado previamente.
-          if (bboxH * bboxW > 600 * 250) {
-            // if (true) {
-
-            // 1. Levantamos la bandera global para el repintado masivo
-            g_bRequestFullRepaint = true;
-
-            // 2. Abortamos el bucle actual de widgets.
-            // Al hacer break, el iterador se detiene, la función termina su
-            // evaluación de RENDER_IDLE, y en el próximo ciclo del main,
-            // entrará directamente al bloque de repintado masivo (paso 3 de tu
-            // código).
-            break;
-
-          } else {
-            // Si cabe perfectamente en la cola, hacemos el dibujado rápido
-            // parcial
-            gfx_compositePartialFrame(g_psCurrentForm, g_pDrawingBuffer, bboxX,
-                                      bboxY - 20, bboxW, bboxH + 20);
-
-            Gfx_BuildSg_For_Segments(g_pDrawingBuffer, bboxX, bboxY - 20, bboxW,
-                                     bboxH + 20);
-          }
-        }
-
-        // ¡Avance incondicional del iterador (Evita el loop infinito)!
-        iter = iter->psNext;
-      }
-    }
-    break;
-
-  case RENDER_SEND_ROW: {
-    // Pop the next dirty row safely
-    DMARenderJob_t job = g_DMAQueue.jobs[g_DMAQueue.tail];
-    g_DMAQueue.tail = (g_DMAQueue.tail + 1) % MAX_DMA_JOBS;
-    g_DMAQueue.count--;
-
-    // Assert CS LOW
-    HAL_SPI_CS_Enable();
-
-    // --- CPU Polling Transfer ---
-    uint8_t *pData = (uint8_t *)job.pSrcSDRAM;
-    uint32_t i = 0;
-
-    if (g_bIsQuadActive) {
-      // Set bus to Write direction
-      MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-
-      // Command + Address bytes
-      MAP_SSIDataPut(SSI3_BASE, (uint8_t)((job.destRAMG >> 16) |
-                                          0x80)); // 0x80 = MEM_WRITE
-      MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG >> 8));
-      MAP_SSIDataPut(SSI3_BASE, (uint8_t)(job.destRAMG));
-
-      // Pump payload directly into TX FIFO
-      for (; i < job.length; i++) {
-        MAP_SSIDataPut(SSI3_BASE, pData[i]);
-      }
-    } else {
-      // Legacy SPI
-      EVE_AddrForWr(job.destRAMG);
-
-      for (i = 0; i < job.length; i++) {
-        HAL_SPI_ReadWrite8(pData[i]);
-      }
-    }
-
-    // Absolutely crucial: Wait for the last byte to physically leave the wire
-    while (MAP_SSIBusy(SSI3_BASE)) {
-    }
-
-    // Pull CS High
-    HAL_SPI_CS_Disable();
-
-    // Since the CPU blocked until done, bypass RENDER_WAIT_DMA and jump to the
-    // next job
-    if (g_DMAQueue.count > 0) {
-      g_RenderEngine.state = RENDER_SEND_ROW;
-    } else {
-      g_RenderEngine.state = RENDER_FINISHED;
-
-      if (!g_bPendingBottomHalf) {
-        g_bIsBackgroundReady = true;
-      }
-    }
-    break;
-  }
-
-  case RENDER_FINISHED:
-    // Left empty/bypassed intentionally for CPU debugging.
-    // Acts as a safety net back to IDLE.
-    // formManagerRenderEVEComponents();
-    g_RenderEngine.state = RENDER_IDLE;
-
-    break;
-
-  case RENDER_WAIT_SG_ISR:
-    if (!g_bSPI_TransferActive) {
-#ifndef GFX_ENABLE_INT
-      HAL_SPI_CS_Disable();
-#endif
-      g_RenderEngine.state = RENDER_IDLE;
-    } else {
-      return;
-    }
-    break;
-  }
-} */

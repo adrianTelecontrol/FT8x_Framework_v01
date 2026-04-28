@@ -12,7 +12,6 @@
 #include "helpers.h"
 #include "gfx_theme.h"
 #include "event_engine.h"
-#include "navigation_widgets.h"
 
 #include "home_form.h"
 
@@ -109,7 +108,7 @@ void pushButtonOnRelease(gfx_Button *btn)
 void changeThemeButtonReleased(gfx_Button *btn)
 {
     pushButtonOnRelease(btn);
-    Event_Post(EVT_CMD_CHANGE_THEME, 0);    
+    Event_Post(EVT_CMD_CHANGE_THEME, (EventParam_t){.ptr = NULL});    
 }
 
 void pushButtonOnPosChanged(gfx_Button *btn, Position newPos)
@@ -354,7 +353,6 @@ void initHomeForm(void)
 	canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &sliderValueWidget);
 	canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &vertSliderValueWidget);
     canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &changeThemeButton);
-	useNavigationButtons(&g_sHomeCanvas);
 	
 	//canvasInsertAtTop(&g_sHomeCanvas.psWidgets, &btnPrevFormContainer);
 

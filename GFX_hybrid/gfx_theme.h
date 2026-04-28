@@ -56,3 +56,7 @@ void Theme_SetModeLow(bool isDark);
 void Theme_SetModeHigh(bool isDark);
 
 #endif // GFX_THEME_H
+
+
+
+

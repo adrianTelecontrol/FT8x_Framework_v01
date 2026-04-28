@@ -20,3 +20,6 @@ _Static_assert(sizeof(EEPROM_Layout_t) <= EEPROM_END_ADDR, "EEPROM overflow!");
 #define EEPROM_GET_ADDRESS(f) (EEPROM_START_ADDR + offsetof(EEPROM_Layout_t, f))
 
 #endif // EEPROM_MAP_H_
+
+
+

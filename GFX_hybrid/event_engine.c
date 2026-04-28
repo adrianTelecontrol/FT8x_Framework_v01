@@ -2,14 +2,18 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+#include "helpers.h"
 #include "event_engine.h"
 
-#define EVENT_QUEUE_SIZE	32
-#define MAX_SUBSCRIBERS_PER_EVENT	2
+#define EVENT_QUEUE_SIZE	16
+#define MAX_SUBSCRIBERS_PER_EVENT	5
 
 static SystemEvent_t eventQueue[EVENT_QUEUE_SIZE];
 static volatile uint32_t head = 0;
 static volatile uint32_t tail = 0;
+
+static const char *TAG = "eventEngine";
 
 typedef struct {
 	EventHandler_fn handlers[MAX_SUBSCRIBERS_PER_EVENT];
@@ -26,15 +30,17 @@ bool Event_Init(void)
 	for(; i < NUM_EVENTS; i++) {
 		registry[i].count = 0;
 	}
+
+	return true;
 }
 
-bool Event_Post(EventID_e id, int32_t args)
-{
+bool Event_Post(EventID_e id, EventParam_t arg) {
     // FIX: Subtract 1 to create a valid bitmask 
     // (NOTE: EVENT_QUEUE_SIZE MUST be a power of 2 for this to work!)
     uint16_t nextHead = (head + 1) & (EVENT_QUEUE_SIZE - 1);
 
     if(nextHead == tail) {
+		TIVA_LOGE(TAG, "Event buffer overflow");
         return false;   // La cola esta llena
     }
 
@@ -42,7 +48,7 @@ bool Event_Post(EventID_e id, int32_t args)
     // function can ever be called from inside an ISR (like a UART RX)!
     
     eventQueue[head].id = id;
-    eventQueue[head].arg = args;
+    eventQueue[head].arg = arg;
     head = nextHead;
     
     // Re-enable interrupts here if you disabled them
@@ -77,20 +83,22 @@ bool Event_Subscribe(EventID_e id, EventHandler_fn handler)
 
 bool Event_Dispatch(void)
 {
-	SystemEvent_t evt;
+    SystemEvent_t evt;
 
-	while(Event_Receive(&evt)) {
-		uint8_t subCount = registry[evt.id].count;
+    while(Event_Receive(&evt)) {
+        uint8_t subCount = registry[evt.id].count;
 
-		// Find all functions subscribed to this specific event and execute them
-		uint8_t i = 0;
-		for(; i < subCount; i++)
-		{
-			if(registry[evt.id].handlers[i] != NULL) 
-			{
-				registry[evt.id].handlers[i](evt.arg);
-			}
-		}
-	}
+        uint8_t i = 0;
+        for(; i < subCount; i++)
+        {
+            if(registry[evt.id].handlers[i] != NULL) 
+            {
+                // Pasamos la unión completa al callback
+                registry[evt.id].handlers[i](evt.arg);
+            }
+        }
+    }
+
+	return true;
 }
 

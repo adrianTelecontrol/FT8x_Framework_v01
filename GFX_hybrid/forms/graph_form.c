@@ -1,6 +1,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "event_engine.h"
 #include "helpers.h"
@@ -11,7 +12,8 @@
 #include "font_engine.h"
 #include "gfx_theme.h"
 #include "forms_manager.h"
-#include "navigation_widgets.h"
+#include "common_widgets.h"
+#include "gfx_colors.h"
 
 #include "graph_form.h"
 
@@ -26,34 +28,52 @@ gfx_GenericWidget graphWidgetContainer;
 gfx_GenericWidget graphTitleContainer;
 gfx_GenericWidget graphSawtoothContainer;
 gfx_GenericWidget multigraphContainer;
+gfx_GenericWidget graphOverlayContainer;
+gfx_GenericWidget multigraphOverlayContainer;
 
 gfx_Graph graphWidget;
 gfx_Graph graphSawtoothWidget;
 gfx_Label graphTitle;
 gfx_MultiGraph multigraphWidget;
+gfx_GraphOverlay graphOverlayWidget;
+gfx_GraphOverlay multigraphOverlayWidget;
 
 int16_t graphData[NUM_POINTS]; 
 int16_t sawtoothData[NUM_POINTS];
 int16_t multigraphData1[NUM_POINTS];
 int16_t multigraphData2[NUM_POINTS];
 
+static char graphOverlayData[] = "TC1: 62.49 [C]";
 
-static void onNewGraphValue(uint32_t arg) {
-	gfx_GraphAddPoint(&graphWidget, (int16_t)arg);
+
+static void onNewGraphValue(EventParam_t arg) {
+	gfx_GraphAddPoint(&graphWidget, (int16_t)arg.f32);
+	if(GetExecTimeMs() % 500 == 0) {
+		sprintf(graphOverlayWidget.traces[0].valueText, "TC1: %.2f [C]", arg.f32);
+		graphOverlayWidget.bIsDirty = true;
+	}
 }
 
-static void onSawtoothGraphValue(uint32_t arg) {
-	gfx_GraphAddPoint(&graphSawtoothWidget, (int16_t)arg);
+static void onSawtoothGraphValue(EventParam_t arg) {
+	gfx_GraphAddPoint(&graphSawtoothWidget, (int16_t)arg.f32);
 }
 
-static void onMultigraphSine(uint32_t arg) {
-	gfx_MultiGraphAddData(&multigraphWidget, 0, (int16_t)arg);
+static void onMultigraphSine(EventParam_t arg) {
+	gfx_MultiGraphAddData(&multigraphWidget, 0, (int16_t)arg.f32);
+	if(GetExecTimeMs() % 500 == 0) {
+		sprintf(multigraphOverlayWidget.traces[0].valueText, "TC1: %.2f [C]", arg.f32);
+		multigraphOverlayWidget.bIsDirty = true;
+	}
 }
 
-static void onMultigraphSawtoothValue(uint32_t arg) {
-	gfx_MultiGraphAddData(&multigraphWidget, 1, (int16_t)arg);
-}
+static void onMultigraphSawtoothValue(EventParam_t arg) {
+	gfx_MultiGraphAddData(&multigraphWidget, 1, (int16_t)arg.f32);
 
+	if(GetExecTimeMs() % 500 == 0) {
+		sprintf(multigraphOverlayWidget.traces[1].valueText, "TC2: %.2f [C]", arg.f32);
+		multigraphOverlayWidget.bIsDirty = true;
+	}
+}
 
 void initGraphForm(void) {
 	
@@ -61,15 +81,14 @@ void initGraphForm(void) {
 	g_sGraphFormCanvas.psWidgets = NULL;
 
 	graphTitle = (gfx_Label) {
-        .text = "Graph",
-		.name = "titulo",
-        .pos.x = LCD_WIDTH / 2,
-        .pos.y = 25,
-        .oldPos.x = LCD_WIDTH / 2,
-        .oldPos.y = 50,
-        .alignment = ALIGN_CENTER,
-        .typo = TYPO_H1,           
-        .style = STYLE_DANGER,     
+        .text = "GRAPH",
+        .name = "sysTitle",
+        .pos.x = 110,
+        .pos.y = 50,
+        .alignment = ALIGN_LEFT,
+        .typo = TYPO_H2,           
+        .style = STYLE_TEXT_MAIN,
+        .isVisible = true,
 	};
 	graphTitleContainer.eWidgetType = WD_TYPE_LABEL;
 	graphTitleContainer.pvWidget = (void *)&graphTitle;
@@ -82,11 +101,11 @@ void initGraphForm(void) {
 		.minY = 15,
 		.maxY = 90,
 		.gridLinesX = 4,
-		.gridLinesY = 4,
-		.size.height = 140,
+		.gridLinesY = 3,
+		.size.height = 162,
 		.size.width = 750,
 		.pos.x = 20,
-		.pos.y = 20,
+		.pos.y = 75,
 		.bgColor = g_pCurrentTheme->palette.surface,
 		.gridColor = g_pCurrentTheme->palette.textMuted,
 		.lineColor = g_pCurrentTheme->palette.primary,
@@ -101,32 +120,35 @@ void initGraphForm(void) {
 	graphWidgetContainer.eWidgetType = WD_TYPE_GRAPH;
 	graphWidgetContainer.pvWidget = (void *)&graphWidget;
 
-	graphSawtoothWidget = (gfx_Graph){
-		.name = "sawtooth_graph",
-		.data = sawtoothData,
-		.maxPoints = NUM_POINTS,
-		.head = 0,
-		.minY = 10,
-		.maxY = 90,
-		.gridLinesX = 4,
-		.gridLinesY = 4,
-		.size.height = 140,
-		.size.width = 750,
-		.pos.x = 20,
-		.pos.y = 175,
-		.bgColor = g_pCurrentTheme->palette.surface,
-		.gridColor = g_pCurrentTheme->palette.textMuted,
-		.lineColor = g_pCurrentTheme->palette.danger,
-		.lineWidth = 2,
-		.typo = TYPO_CAPTION,
-		.textColor = g_pCurrentTheme->palette.textMuted,
-		.bShowLabels = true,
-	};
-	memset(sawtoothData, 0, NUM_POINTS * 2);
+	uint16_t strWidth, strHeight;
+	gfx_GetStringDimensions("TC1: 62.49 [C]", Theme_ResolveFontId(TYPO_MONO), &strWidth, &strHeight, 1);
 	
-	//gfx_GraphAddPoint(&graphWidget, 50);
-	graphSawtoothContainer.eWidgetType = WD_TYPE_GRAPH;
-	graphSawtoothContainer.pvWidget = (void *)&graphSawtoothWidget;
+	uint16_t overlayWidth = strWidth * 1.3f;
+	uint16_t overlayHeight = strHeight * 1.6f;
+	graphOverlayWidget = (gfx_GraphOverlay){
+	    .name = "graphOvl",
+	    .pos.x = graphWidget.pos.x + graphWidget.size.width - overlayWidth - 15, 
+	    .pos.y = graphWidget.pos.y + 10,        
+	    .size.width = overlayWidth,
+	    .size.height = overlayHeight, 
+	    .bgColor = g_pCurrentTheme->palette.background, 
+	    .textColor = g_pCurrentTheme->palette.textMain, // Make it pop more than textMuted
+	    .typo = TYPO_CAPTION,
+	    // --- DATA ---
+	    .numTraces = 1,
+	    .traces = {
+	        [0] = {
+	            // Must strictly match the graph's lineColor to make visual sense
+	            .color = g_pCurrentTheme->palette.primary, 
+	            .valueText = "--", // Default state before first event
+	            .isVisible = true
+	        }
+	    },
+	    .bIsDirty = true
+	};
+
+	graphOverlayContainer.eWidgetType = WD_TYPE_GRAPH_OVERLAY;
+	graphOverlayContainer.pvWidget = (void *)&graphOverlayWidget;
 
 	multigraphWidget = (gfx_MultiGraph){
 		.name = "sawtooth_graph",
@@ -135,11 +157,11 @@ void initGraphForm(void) {
 		.minY = 10,
 		.maxY = 90,
 		.gridLinesX = 4,
-		.gridLinesY = 4,
-		.size.height = 140,
+		.gridLinesY = 3,
+		.size.height = 162,
 		.size.width = 750,
 		.pos.x = 20,
-		.pos.y = 330,
+		.pos.y = 247,
 		.bgColor = g_pCurrentTheme->palette.surface,
 		.gridColor = g_pCurrentTheme->palette.textMuted,
 		.lineWidth = 2,
@@ -155,6 +177,37 @@ void initGraphForm(void) {
 	memset(multigraphData1, 0, NUM_POINTS * 2);
 	memset(multigraphData2, 0, NUM_POINTS * 2);
 	
+	multigraphOverlayWidget = (gfx_GraphOverlay){
+	    .name = "graphOvl",
+	    .pos.x = multigraphWidget.pos.x + multigraphWidget.size.width - overlayWidth - 15, 
+	    .pos.y = multigraphWidget.pos.y + 10,        
+	    .size.width = overlayWidth,
+	    .size.height = overlayHeight * 1.8, 
+	    .bgColor = g_pCurrentTheme->palette.background, 
+	    .textColor = g_pCurrentTheme->palette.textMain, // Make it pop more than textMuted
+	    .typo = TYPO_CAPTION,
+	    // --- DATA ---
+	    .numTraces = 2,
+	    .traces = {
+	        [0] = {
+	            // Must strictly match the graph's lineColor to make visual sense
+	            .color = g_pCurrentTheme->palette.danger, 
+	            .valueText = "--", // Default state before first event
+	            .isVisible = true
+	        }, 
+	        [1] = {
+	            // Must strictly match the graph's lineColor to make visual sense
+	            .color = g_pCurrentTheme->palette.success, 
+	            .valueText = "--", // Default state before first event
+	            .isVisible = true
+	        }
+	    },
+	    .bIsDirty = true
+	};
+
+	multigraphOverlayContainer.eWidgetType = WD_TYPE_GRAPH_OVERLAY;
+	multigraphOverlayContainer.pvWidget = (void *)&multigraphOverlayWidget;
+
 	//gfx_GraphAddPoint(&graphWidget, 50);
 	multigraphContainer.eWidgetType = WD_TYPE_MULTIGRAPH;
 	multigraphContainer.pvWidget = (void *)&multigraphWidget;
@@ -164,10 +217,13 @@ void initGraphForm(void) {
 	Event_Subscribe(EVT_SYS_NEW_GRAPH_VALUE, ( EventHandler_fn )onMultigraphSine );
 	Event_Subscribe(EVT_SYS_NEW_SAWTOOTH_VALUE, (EventHandler_fn)onMultigraphSawtoothValue);
 
+	useFullHeader(&g_sGraphFormCanvas);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphTitleContainer);
 	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphWidgetContainer);
-	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphSawtoothContainer);
 	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &multigraphContainer);
-	//canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphTitleContainer);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphOverlayContainer);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &multigraphOverlayContainer);
+
 	
 	useNavigationButtons(&g_sGraphFormCanvas);
 

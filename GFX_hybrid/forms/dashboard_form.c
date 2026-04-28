@@ -13,13 +13,10 @@
 #include "helpers.h"
 #include "gfx_theme.h"
 #include "event_engine.h"
-#include "navigation_widgets.h"
+#include "common_widgets.h"
 
 #include "dashboard_form.h"
 
-#ifndef EVE_FREE_RAMG_START
-#define EVE_FREE_RAMG_START		768000 + 200
-#endif
 
 static const char *TAG = "dashboardForm";
 
@@ -31,12 +28,9 @@ int16_t g_i16DashboardFormID = 0;
 // 1. The Generic Nodes (Widgets)
 // ==========================================
 // Header
-gfx_GenericWidget titleWidget;
-gfx_GenericWidget dateWidget;
-gfx_GenericWidget timeWidget;
 gfx_GenericWidget headerPanelWidget;
-gfx_GenericWidget emergencyStopWidget;
 gfx_GenericWidget tcLogoImgWidget;
+gfx_GenericWidget titleWidget;
 
 // Panel: Temperaturas
 gfx_GenericWidget tempPanelBgWidget;
@@ -73,12 +67,7 @@ gfx_GenericWidget btnGraphWidget;
 // 2. The Persistent Memory (Data)
 // ==========================================
 // Header
-gfx_Rectangle headerPanelData;
-gfx_Image tcLogoImgData;
 gfx_Label titleData;
-gfx_Label dateData;
-gfx_Label timeData;
-gfx_Button emergencyStopData;
 
 // Panel: Temperaturas
 gfx_Rectangle tempPanelBgData;
@@ -106,16 +95,9 @@ gfx_Label     vinValueData;
 gfx_Label     voutValueData;
 gfx_Label     statusValueData;
 
-// Footer Buttons
-gfx_Button btnInicioData;
-gfx_Button btnConfigData;
-gfx_Button btnGraphData;
-
 // ==========================================
 // 3. Static Text Buffers
 // ==========================================
-static char dateBuffer[32] = "21/04/2026";
-static char timeBuffer[32] = "15:35";
 static char t1Buffer[16] = "24.5 C";
 static char t2Buffer[16] = "25.1 C";
 static char t3Buffer[16] = "23.8 C";
@@ -127,40 +109,35 @@ static char statusBuffer[32] = "NOMINAL";
 // ==========================================
 // Callbacks 
 // ==========================================
-static void onEmergencyStopBtnRelease(gfx_Button *btn) {
-	onGenericBtnRelease(btn);	
-}
 
-static void onT1ValueChanged(uint32_t val) {
-	//float fval = *(float *)val;
-	//float fval = (float )val;
-	float fval = rand() % 20;
-	sprintf(t1Buffer, "%.1f C", fval);
+static void onT1ValueChanged(EventParam_t arg) {
+	sprintf(t1Buffer, "%.1f C", arg.f32);
 	t1ValueData.bIsDirty = true;
 }
 
-static void onT2ValueChanged(uint32_t val) {
-	float fval = *(float *)val;
-	snprintf(t2Buffer, 16, "%.1f C", fval);
+static void onT2ValueChanged(EventParam_t arg) {
+	snprintf(t2Buffer, 16, "%.1f C", arg.f32);
 	t2ValueData.bIsDirty = true;
 }
 
-static void onT3ValueChanged(uint32_t val) {
-	float fval = *(float *)val;
-	snprintf(t3Buffer, 16, "%.1f C", fval);
+static void onT3ValueChanged(EventParam_t arg) {
+	snprintf(t3Buffer, 16, "%.1f C", arg.f32);
 	t3ValueData.bIsDirty = true;
 }
 
-static void onVinValueChanged(uint32_t val) {
-	float fval = *(float *)val;
-	snprintf(vinBuffer, 16, "%.1f V", fval);
+static void onVinValueChanged(EventParam_t arg) {
+	snprintf(vinBuffer, 16, "%.1f V", arg.f32);
 	vinValueData.bIsDirty = true;
 }
 
-static void onVoutValueChanged(uint32_t val) {
-	float fval = *(float *)val;
-	snprintf(voutBuffer, 16, "%.1f V", fval);
+static void onVoutValueChanged(EventParam_t arg) {
+	snprintf(voutBuffer, 16, "%.1f V", arg.f32);
 	voutValueData.bIsDirty = true;
+}
+
+static void onStatusValueChanged(EventParam_t arg) {
+	strcpy(statusBuffer, arg.str);
+	statusValueData.bIsDirty = true;
 }
 
 // ==========================================
@@ -171,34 +148,8 @@ void initDashboardForm(void)
     g_sSystemCanvas.ui16BackgroundColor = g_pCurrentTheme->palette.background; 
     g_sSystemCanvas.psWidgets = NULL;
 
-	tcLogoImgData = (gfx_Image) {
-		.name = "mainLogo",
-		.pos.x = 5,
-		.pos.y = 10,
-		.scale = 1,
-	};
-
-	if(!SDSPI_LoadEVEImage(&tcLogoImgData, "logo_tc.png", EVE_FREE_RAMG_START)) {
-		TIVA_LOGE(TAG, "Fallo al cargar logo_tc.png en EVE");
-	}
-
-	tcLogoImgWidget.eWidgetType = WD_TYPE_IMAGE;
-	tcLogoImgWidget.pvWidget = (void *)&tcLogoImgData;
-
-    // --- HEADER ---
-	headerPanelData = (gfx_Rectangle){
-		.dim.width = LCD_WIDTH,
-		.dim.height = 65,
-		.pos.x = 0,
-		.pos.y = 0,
-		.color = g_pCurrentTheme->palette.surface,
-		.round = 0,
-		.borderWidth = 1,
-	};
-	headerPanelWidget.eWidgetType = WD_TYPE_RECT; headerPanelWidget.pvWidget = (void *)&headerPanelData;
-	
     titleData = (gfx_Label){
-        .text = "SYSTEM MONITOR",
+        .text = "System Monitor",
         .name = "sysTitle",
         .pos.x = 110,
         .pos.y = 50,
@@ -208,49 +159,6 @@ void initDashboardForm(void)
         .isVisible = true,
     };
     titleWidget.eWidgetType = WD_TYPE_LABEL; titleWidget.pvWidget = (void *)&titleData;
-
-    dateData = (gfx_Label){
-        .text = dateBuffer,
-        .name = "dateWidget",
-        .pos.x = LCD_WIDTH / 2.0 + 130, // Esquina superior derecha
-        .pos.y = 25,
-        .alignment = ALIGN_RIGHT,
-        .typo = TYPO_CAPTION,           
-        .style = STYLE_TEXT_MUTED,
-        .isVisible = true,
-    };
-    dateWidget.eWidgetType = WD_TYPE_LABEL; dateWidget.pvWidget = (void *)&dateData;
-
-    timeData = (gfx_Label){
-        .text = timeBuffer,
-        .name = "timeWidget",
-        .pos.x = LCD_WIDTH / 2.0 + 130, // Esquina superior derecha
-        .pos.y = 55,
-        .alignment = ALIGN_RIGHT,
-        .typo = TYPO_H2,           
-        .style = STYLE_TEXT_MAIN_BOLD,
-        .isVisible = true,
-    };
-    timeWidget.eWidgetType = WD_TYPE_LABEL; timeWidget.pvWidget = (void *)&timeData;
-
-	emergencyStopData = (gfx_Button){
-		.label = "EMERGENCY STOP",
-		.size.height = 55,
-		.size.width = 245,
-		.pos.x = timeData.pos.x + 20,
-		.pos.y = 5,
-		.name = "emergencyStop",
-		.onPosChanged = NULL,
-		.onPressed = onGenericBtnPressed,
-		.onRelease = onEmergencyStopBtnRelease,
-		.radius = 5,
-		.state = BTN_STATE_NORMAL,
-		.style = STYLE_DANGER,
-		.typo = TYPO_MONO_BOLD,
-		.borderWidth = 1,
-	};
-	gfx_initRegTouch((void *)&emergencyStopData, WD_TYPE_BUTTON);
-	emergencyStopWidget.eWidgetType = WD_TYPE_BUTTON; emergencyStopWidget.pvWidget = (void *)&emergencyStopData;
 
     // --- PANEL 1: TEMPERATURAS (Izquierda) ---
 	uint16_t panelWidth = 385;
@@ -405,10 +313,10 @@ void initDashboardForm(void)
     // 5. Insertion into Canvas (Back-to-front)
     // ==========================================
     // Fondos de paneles
-    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &headerPanelWidget);
+	useFullHeader(&g_sSystemCanvas);
+	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &titleWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &tempPanelBgWidget);
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &statusPanelBgWidget);
-	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &tcLogoImgWidget);
 	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t1PanelWidget);
 	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t2PanelWidget);
 	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &t3PanelWidget);
@@ -416,11 +324,6 @@ void initDashboardForm(void)
 	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &voutPanelWidget);
 	canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &statusPanelWidget);
 
-    // Header
-    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &titleWidget);
-    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &dateWidget);
-    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &timeWidget);
-    canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &emergencyStopWidget);
 
     // Contenido Temperaturas
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &tempPanelTitleWidget);
@@ -442,6 +345,7 @@ void initDashboardForm(void)
     canvasInsertAtTop(&g_sSystemCanvas.psWidgets, &statusValueWidget);
 
 	useNavigationButtons(&g_sSystemCanvas);
+	useLogoWidget(&g_sSystemCanvas);
 
 	// Subscribe to events
 	Event_Subscribe(EVT_SYS_T1_VAL_CHANGED, ( EventHandler_fn ) onT1ValueChanged);
@@ -449,6 +353,7 @@ void initDashboardForm(void)
 	Event_Subscribe(EVT_SYS_T3_VAL_CHANGED, ( EventHandler_fn ) onT3ValueChanged);
 	Event_Subscribe(EVT_SYS_VIN_VAL_CHANGED, ( EventHandler_fn ) onVinValueChanged);
 	Event_Subscribe(EVT_SYS_VOUT_VAL_CHANGED, ( EventHandler_fn ) onVoutValueChanged);
+	Event_Subscribe(EVT_SYS_STATUS_CHANGED, (EventHandler_fn) onStatusValueChanged);
 
     // Register Form
     g_i16DashboardFormID = formManagerAddForm(&g_sSystemCanvas);

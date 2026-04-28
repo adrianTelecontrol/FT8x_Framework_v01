@@ -12,3 +12,7 @@ bool HAL_EEPROM_readBytes(uint32_t addr, uint32_t *data, uint32_t size);
 
 
 #endif // HAL_EEPROM_H_
+
+
+
+

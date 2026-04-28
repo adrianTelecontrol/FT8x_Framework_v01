@@ -37,6 +37,7 @@ typedef enum {
   WD_TYPE_GRAPH,
   WD_TYPE_MULTIGRAPH,
   WD_TYPE_IMAGE,
+  WD_TYPE_GRAPH_OVERLAY,
 } widget_type_e;
 
 typedef struct RegionTouchObject {
@@ -223,6 +224,29 @@ typedef struct {
 	bool bEVEDirty;
 } gfx_MultiGraph;
 
+#define MAX_OVERLAY_TRACES 4
+
+typedef struct {
+    uint16_t color;          // El color de la línea de la gráfica que representa
+    char valueText[24];      // El valor formateado (ej. "12.5 V")
+    bool isVisible;          // Por si quieres apagar temporalmente una lectura
+} gfx_TraceOverlayData;
+
+typedef struct {
+    Position pos;
+    Size size;               // Tamaño fijo o calculado del recuadro
+    
+    gfx_TraceOverlayData traces[MAX_OVERLAY_TRACES];
+    uint8_t numTraces;       // Cuántas trazas están activas (1 para Graph, >1 para MultiGraph)
+
+    uint16_t bgColor;        // Color del recuadro flotante
+    uint16_t textColor;
+    gfx_TypoStyle_e typo;
+    
+    char *name;
+    bool bIsDirty;
+} gfx_GraphOverlay;
+
 typedef struct {
     char *name;
     Position pos;
@@ -355,7 +379,14 @@ gfx_DirtyRect gfx_ButtonProcessState(gfx_Button *btn);
 
 gfx_DirtyRect gfx_LabelProcessState(gfx_Label *lbl);
 
+gfx_DirtyRect gfx_SliderProcessState(gfx_Slider *sld);
+
+gfx_DirtyRect gfx_GraphOverlayProcessState(gfx_GraphOverlay *ovl);
+
 bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
                                int16_t dirtyX, int16_t dirtyY, 
                                int16_t dirtyW, int16_t dirtyH);
+
+void gfx_drawGraphOverlay(pixel16_t *pBuf, gfx_GraphOverlay *ovl);
+
 #endif // GFX_H

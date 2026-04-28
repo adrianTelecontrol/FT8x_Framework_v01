@@ -55,13 +55,11 @@ inline void HAL_SPI_LED_Off() {
 inline void HAL_SPI_RX() {
 	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR1, HAL_GPIO_LOW);
 	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR2, HAL_GPIO_LOW);
-	SysCtlDelay(3);
 }
 
 inline void HAL_SPI_TX() {
 	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR1, HAL_GPIO_HIGH);
 	GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR2, HAL_GPIO_HIGH);
-	SysCtlDelay(3);
 }
 
 inline void HAL_SPI_SingleMode() {

@@ -177,6 +177,9 @@ bool gfx_compositeFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer) {
 	case WD_TYPE_MULTIGRAPH:
       gfx_drawMultiGraph(psPixelBuffer, (gfx_MultiGraph *)iter->sWidget.pvWidget);	
       break;
+	case WD_TYPE_GRAPH_OVERLAY:
+	  gfx_drawGraphOverlay(psPixelBuffer, (gfx_GraphOverlay *)iter->sWidget.pvWidget);
+	  break;
     default:
       break;
     }
@@ -656,48 +659,6 @@ void gfx_fillTriangle(pixel16_t *pBuf, int16_t x0, int16_t y0, int16_t x1,
 //
 // **************** Widget Functions **************************
 //
-/*
-void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
-  if (!pBuf || !btn)
-    return;
-
-  // Default to the normal colors defined in the struct
-  uint16_t activeBgColor = btn->backgroundColor;
-  uint16_t activeBorderColor = btn->borderColor;
-  uint16_t activeTextColor = btn->textColor;
-
-  // Override colors based on the current physical state
-  if (btn->state == BTN_STATE_PRESSED) {
-    // Darken the background and border to simulate a physical push
-    activeBgColor = DARKEN_COLOR(btn->backgroundColor);
-    activeBorderColor = DARKEN_COLOR(btn->borderColor);
-  } else if (btn->state == BTN_STATE_DISABLED) {
-    // "Gray out" the button to show it cannot be interacted with
-    activeBgColor = 0x4208;     // C_DARK_GRAY
-    activeBorderColor = 0x8410; // C_GRAY
-    activeTextColor = 0x8410;   // C_GRAY
-  }
-
-  // 1. Draw Border (Using the active border color)
-  if (btn->borderWidth) {
-    gfx_fillRoundRect(pBuf, btn->pos.x - btn->borderWidth,
-                      btn->pos.y - btn->borderWidth,
-                      btn->size.width + btn->borderWidth * 2,
-                      btn->size.height + btn->borderWidth * 2, btn->radius,
-                      activeBorderColor);
-  }
-
-  // 2. Draw Background (Using the active background color)
-  gfx_fillRoundRect(pBuf, btn->pos.x, btn->pos.y, btn->size.width,
-                    btn->size.height, btn->radius, activeBgColor);
-
-  // 3. Draw Label (Using the active text color)
-  gfx_DrawString(pBuf, btn->font, btn->pos.x + btn->size.width / 2.0f,
-                 btn->pos.y + btn->size.height / 2.0f, btn->label,
-                 activeTextColor, btn->fontScale, ALIGN_CENTER);
-}*/
-
-
 // Pre-calcula los píxeles vacíos en el borde de la esquina para evitar sqrt() en el bucle principal.
 // cornerX guarda la 'X delta' (píxeles vacíos) para cada 'dy' (fila de la esquina).
 static void gfx_getCornerEmptyPixels(int16_t *cornerX, int16_t r) {
@@ -1093,119 +1054,6 @@ bool gfx_processSliderTouch(gfx_Slider *sl, TouchStatus touch) {
     return false;
 }
 
-/*
-bool gfx_processSliderTouch(gfx_Slider *sl, TouchStatus touch) {
-    // Verificar si el toque ocurrió dentro de la RegionTouchObject del slider
-        
-        // Determinar límites físicos de arrastre
-        int16_t minX = sl->pos.x + sl->knobRadius;
-        int16_t maxX = sl->pos.x + sl->size.width - sl->knobRadius;
-        int16_t touchX = touch.x;
-
-        // Restringir el toque a los bordes
-        if (touchX < minX) touchX = minX;
-        if (touchX > maxX) touchX = maxX;
-
-        // Calcular nuevo valor
-        int16_t pixelRange = maxX - minX;
-        int16_t valueRange = sl->maxValue - sl->minValue;
-        
-        int16_t newValue = sl->minValue + (((touchX - minX) * valueRange) / pixelRange);
-
-		TIVA_LOGI(TASK_NAME, "Slider new value: %u", newValue);
-
-        sl->bIsDirty = true;
-
-        // Si el valor cambió, actualizar y disparar callback
-        if (newValue != sl->currentValue) {
-            sl->currentValue = newValue;
-
-            
-            if (sl->onValueChanged != NULL) {
-                sl->onValueChanged(sl, sl->currentValue);
-            }
-            return true; // El evento fue consumido
-        }
-	return false;
-}*/
-/*
-void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph) {
-    if (!pBuf || !graph) return;
-
-    // 1. Dibujar fondo de la gráfica con el color personalizado
-    gfx_fillRoundRect(pBuf, graph->pos.x, graph->pos.y, 
-                      graph->size.width, graph->size.height, 4, graph->bgColor);
-
-    // =========================================================
-    // 2. Dibujar Cuadrícula (Uso de funciones FAST optimizadas)
-    // =========================================================
-    
-    // Líneas Horizontales (Eje Y)
-    if (graph->gridLinesY > 0) {
-        int16_t stepY = graph->size.height / (graph->gridLinesY + 1);
-		int i = 1;
-        for (; i <= graph->gridLinesY; i++) {
-            int16_t gy = graph->pos.y + (i * stepY);
-            gfx_drawFastHLine(pBuf, graph->pos.x, gy, graph->size.width, graph->gridColor);
-        }
-    }
-    
-    // Líneas Verticales (Eje X)
-    if (graph->gridLinesX > 0) {
-        int16_t stepX = graph->size.width / (graph->gridLinesX + 1);
-		int i = 1;
-        for (; i <= graph->gridLinesX; i++) {
-            int16_t gx = graph->pos.x + (i * stepX);
-            gfx_drawFastVLine(pBuf, gx, graph->pos.y, graph->size.height, graph->gridColor);
-        }
-    }
-
-	// =========================================================
-    // 3. Trazar los Datos (Grosor y Color Dinámicos)
-    // =========================================================
-    if (graph->data != NULL && graph->maxPoints > 1) {
-        int16_t rangeY = graph->maxY - graph->minY;
-        if (rangeY <= 0) rangeY = 1; // Prevenir división por cero
-
-        int16_t prevX = -1, prevY = -1;
-
-        // Calculamos el offset para centrar el grosor de la línea
-        int8_t widthOffset = -(graph->lineWidth / 2);
-
-		uint16_t i = 0;
-        for (; i < graph->maxPoints; i++) {
-            uint16_t dataIdx = (graph->head + i) % graph->maxPoints;
-            int16_t val = graph->data[dataIdx];
-
-            // Clamping 
-            if (val < graph->minY) val = graph->minY;
-            if (val > graph->maxY) val = graph->maxY;
-
-            // EL FIX: Forzar la matemática a 32 bits para evitar desbordamiento
-            int16_t px = graph->pos.x + (int16_t)(((int32_t)i * graph->size.width) / (graph->maxPoints - 1));
-            int16_t py = graph->pos.y + graph->size.height - (int16_t)(((int32_t)(val - graph->minY) * graph->size.height) / rangeY);
-
-            // Conectar con el punto anterior
-            if (prevX != -1) {
-                // Loop para engrosar la línea iterando sobre el eje Y
-				uint8_t w = 0;
-                for (; w < graph->lineWidth; w++) {
-                    int8_t currentOffset = widthOffset + w;
-                    
-                    int16_t adjPrevY = prevY + currentOffset;
-                    int16_t adjPy = py + currentOffset;
-                    
-                    gfx_writeLine(pBuf, prevX, adjPrevY, px, adjPy, graph->lineColor);
-                }
-            }
-            prevX = px;
-            prevY = py;
-        }
-    }
-
-    graph->bIsDirty = false;
-} */
-
 void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph) {
     if (!pBuf || !graph) return;
 
@@ -1221,7 +1069,7 @@ void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph) {
     uint16_t textW = 0, textH = 0;
     
     if (graph->bShowLabels) {
-        fontId = gfx_ResolveFontId(graph->typo); // Using the helper we made earlier!
+        fontId = Theme_ResolveFontId(graph->typo); // Using the helper we made earlier!
         if (fontId >= 0) {
             // Get the height of a standard number to center it vertically
             gfx_GetStringDimensions("0", fontId, &textW, &textH, 1); 
@@ -1285,65 +1133,7 @@ void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph) {
             gfx_drawFastVLine(pBuf, gx, graph->pos.y, graph->size.height, graph->gridColor);
         }
     }
-
-    // =========================================================
-    // 3. Trazar los Datos (Grosor Inteligente)
-    // =========================================================
-	#if 0
-    if (graph->data != NULL && graph->maxPoints > 1) {
-        int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
-		if (rangeY <= 0) rangeY = 1;
-
-        int16_t prevX = -1, prevY = -1;
-        int8_t widthOffset = -(graph->lineWidth / 2);
-		uint16_t i = 0;
-        for (; i < graph->maxPoints; i++) {
-            uint16_t dataIdx = (graph->head + i) % graph->maxPoints;
-            int16_t val = graph->data[dataIdx];
-
-            // Clamping 
-            // Clamping 
-            if (val < graph->minY) val = graph->minY;
-            if (val > graph->maxY) val = graph->maxY;
-
-            // EL FIX: Invertir el mapeo del eje X
-            // Calculamos un índice inverso para que el dato más viejo (i=0) 
-            // se dibuje a la derecha, y el más nuevo se dibuje a la izquierda.
-            uint16_t reverse_i = (graph->maxPoints - 1) - i;
-
-            int16_t px = (int16_t)(
-                (int32_t)graph->pos.x + 
-                ((int32_t)reverse_i * (int32_t)(graph->size.width - 1)) / 
-                (int32_t)(graph->maxPoints - 1)
-            );
-            
-            int16_t py = (int16_t)(
-                (int32_t)graph->pos.y + (int32_t)(graph->size.height - 1) -
-                (((int32_t)(val - graph->minY) * (int32_t)(graph->size.height - 1)) / rangeY)
-            );
-            // Conectar con el punto anterior
-            if (prevX != -1) {
-                
-                // EL FIX: Calcular si la línea es más vertical que horizontal
-                bool isSteep = abs(py - prevY) > abs(px - prevX);
-                uint8_t w = 0;
-                for (; w < graph->lineWidth; w++) {
-                    int8_t currentOffset = widthOffset + w;
-                    
-                    if (isSteep) {
-                        // Si la caída es vertical, desplazamos la línea hacia los LADOS (Eje X)
-                        gfx_writeLine(pBuf, prevX + currentOffset, prevY, px + currentOffset, py, graph->lineColor);
-                    } else {
-                        // Si la línea es horizontal, la desplazamos hacia ARRIBA/ABAJO (Eje Y)
-                        gfx_writeLine(pBuf, prevX, prevY + currentOffset, px, py + currentOffset, graph->lineColor);
-                    }
-                }
-            }
-            prevX = px;
-            prevY = py;
-        }
-    }
-	#endif
+	
 
     graph->bIsDirty = false;
 }
@@ -1477,8 +1267,10 @@ void gfx_GraphRenderEVEComponents(gfx_Graph *graph) {
       API_BEGIN(LINE_STRIP); 
       API_LINE_WIDTH(graph->lineWidth * 16 / 2); 
       
-      uint32_t color = 0x22AAAA; 
-      API_COLOR_RGB((uint8_t)(color >> 16), (uint8_t)(color >> 8), (uint8_t)color);
+      // uint32_t color = 0x22AAAA; 
+      // API_COLOR_RGB((uint8_t)(color >> 16), (uint8_t)(color >> 8), (uint8_t)color);
+      uint16_t c = graph->lineColor;
+      API_COLOR_RGB((uint8_t)((c >> 8) & 0xF8), (uint8_t)((c >> 3) & 0xFC), (uint8_t)((c << 3) & 0xF8));
 
 	  uint16_t i = 0;
       for (; i < graph->maxPoints; i++) {
@@ -1531,7 +1323,7 @@ void gfx_drawMultiGraph(pixel16_t *pBuf, gfx_MultiGraph *graph) {
     uint16_t textW = 0, textH = 0;
     
     if (graph->bShowLabels) {
-        fontId = gfx_ResolveFontId(graph->typo); 
+        fontId = Theme_ResolveFontId(graph->typo); 
         if (fontId >= 0) {
             gfx_GetStringDimensions("0", fontId, &textW, &textH, 1); 
         }
@@ -1725,7 +1517,6 @@ gfx_DirtyRect gfx_ButtonProcessState(gfx_Button *btn) {
 
     if (btn->bIsDirty) {
         // 1. Aquí actualizas la SDRAM (dibujar el botón presionado/suelto)
-        gfx_drawButton(g_pDrawingBuffer, btn); 
         
         // 2. Extraemos el Bounding Box (bbox)
         rect.x = btn->pos.x;
@@ -1740,35 +1531,14 @@ gfx_DirtyRect gfx_ButtonProcessState(gfx_Button *btn) {
     return rect;
 }
 
-// En gfx_label.c
-/*
-gfx_DirtyRect gfx_LabelProcessState(gfx_Label *lbl) {
-    gfx_DirtyRect rect = {0, 0, 0, 0, false};
-    
-    if (lbl->bIsDirty) {
-        gfx_drawLabel(g_pDrawingBuffer, lbl); // Dibuja la nueva fuente
-        
-        // El bounding box del label depende de su tipografía y longitud de texto
-        uint8_t fontId = gfx_ResolveFontId(lbl->typo); // Using the helper we made earlier!
-		gfx_GetStringDimensions(lbl->text, fontId, (uint16_t *)&rect.w, (uint16_t *)&rect.h, 1);
-        rect.x = lbl->pos.x;
-        rect.y = lbl->pos.y - 20;
-        rect.isDirty = true;
-        
-        lbl->bIsDirty = false;
-    }
-    return rect;
-}*/
-
 gfx_DirtyRect gfx_LabelProcessState(gfx_Label *lbl) {
     gfx_DirtyRect rect = {0, 0, 0, 0, false};
     
     if (lbl->bIsDirty && lbl->text != NULL) {
         // 1. Dibuja primero para actualizar la SDRAM
-        //gfx_drawLabel(g_pDrawingBuffer, lbl); 
         
         // 2. Obtener métricas reales de la fuente
-        uint8_t fontId = gfx_ResolveFontId(lbl->typo);
+        uint8_t fontId = Theme_ResolveFontId(lbl->typo);
         uint16_t totalWidth = 0, totalHeight = 0;
         gfx_GetStringDimensions(lbl->text, fontId, &totalWidth, &totalHeight, 1);
 
@@ -1840,6 +1610,43 @@ gfx_DirtyRect gfx_LabelProcessState(gfx_Label *lbl) {
     return rect;
 }
 
+gfx_DirtyRect gfx_SliderProcessState(gfx_Slider *sld) {
+	gfx_DirtyRect rect = {0};
+
+	if(sld->bIsDirty) {
+        rect.x = sld->pos.x;
+        rect.y = sld->pos.y;
+        rect.w = sld->size.width;
+        rect.h = sld->size.height;
+        rect.isDirty = true;
+        
+        // 3. Limpiamos la bandera del widget
+        sld->bIsDirty = false; 
+		rect.isDirty = true;
+	}
+
+	return rect;
+}
+
+gfx_DirtyRect gfx_GraphOverlayProcessState(gfx_GraphOverlay *ovl) {
+    gfx_DirtyRect rect = {0, 0, 0, 0, false};
+    
+    if (ovl->bIsDirty) {
+        // Actualizamos los pixeles en memoria SDRAM
+        gfx_drawGraphOverlay(g_pDrawingBuffer, ovl); 
+        
+        rect.x = ovl->pos.x;
+        rect.y = ovl->pos.y;
+        rect.w = ovl->size.width;
+        rect.h = ovl->size.height;
+        rect.isDirty = true;
+        
+        ovl->bIsDirty = false;
+    }
+    
+    return rect;
+}
+
 bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
                                int16_t dirtyX, int16_t dirtyY, 
                                int16_t dirtyW, int16_t dirtyH) 
@@ -1902,6 +1709,10 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
                     case WD_TYPE_MULTIGRAPH:
                         gfx_drawMultiGraph(psPixelBuffer, (gfx_MultiGraph *)iter->sWidget.pvWidget);
                         break;
+					// En tu función de composición:
+					case WD_TYPE_GRAPH_OVERLAY:
+					    gfx_drawGraphOverlay(psPixelBuffer, (gfx_GraphOverlay *)iter->sWidget.pvWidget);
+					    break;
                     default:
                         break;
                 }
@@ -1911,4 +1722,45 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
     }
 
     return true;
+}
+
+void gfx_drawGraphOverlay(pixel16_t *pBuf, gfx_GraphOverlay *ovl) {
+    if (!pBuf || !ovl) return;
+
+    // 1. Dibujar el fondo del panel flotante
+    gfx_fillRoundRect(pBuf, ovl->pos.x, ovl->pos.y, 
+                      ovl->size.width, ovl->size.height, 5, ovl->bgColor);
+
+    // 2. Resolver la fuente y obtener la altura para espaciar los elementos
+    int8_t fontId = Theme_ResolveFontId(ovl->typo);
+    uint16_t textW = 0, textH = 0;
+    
+    if (fontId >= 0) {
+        // Obtenemos la altura estándar de esta tipografía
+        gfx_GetStringDimensions("0", fontId, &textW, &textH, 1); 
+    }
+
+    // 3. Iterar sobre las trazas activas y dibujarlas (Apiladas verticalmente)
+    int16_t startY = ovl->pos.y + 10; // Margen superior
+    int16_t startX = ovl->pos.x + 10; // Margen izquierdo
+    uint16_t colorRectSize = textH * 0.8f; // El cuadradito de color escala con la letra
+
+    int i = 0;
+    for (; i < ovl->numTraces; i++) {
+        if (!ovl->traces[i].isVisible) continue;
+
+        int16_t currentY = startY + (i * (textH + 8)); // 8px de separación entre trazas
+
+        // A. Dibujar el cuadrito de color indicador
+        gfx_fillRoundRect(pBuf, startX, currentY, 
+                          colorRectSize, colorRectSize, 2, ovl->traces[i].color);
+
+        // B. Dibujar el texto del valor
+        // Alineamos el texto usando ALIGN_VCENTER basándonos en el centro del cuadrito
+        int16_t textY = currentY + (colorRectSize / 2);
+        int16_t textX = startX + colorRectSize + 8; // 8px de separación color->texto
+
+        gfx_DrawString(pBuf, fontId, textX, textY, 
+                       ovl->traces[i].valueText, ovl->textColor, ALIGN_VCENTER, 1);
+    }
 }
