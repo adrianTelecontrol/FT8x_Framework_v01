@@ -238,7 +238,20 @@
             "projectInfo": {
                 "name": "GFX_hybrid",
                 "resourceId": "/GFX_hybrid"
-            }
+            },
+            "connections": [
+                {
+                    "name": "Texas Instruments XDS2xx USB Debug Probe",
+                    "cores": [
+                        {
+                            "name": "CORTEX_M4_0",
+                            "debuggerSettings": {
+                                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+                            }
+                        }
+                    ]
+                }
+            ]
         }
     ]
 }

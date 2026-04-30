@@ -56,6 +56,7 @@
                                 <option id="com.ti.ccstudio.buildDefinitions.TMS470_20.2.compilerID.OPT_LEVEL.2088159492" superClass="com.ti.ccstudio.buildDefinitions.TMS470_20.2.compilerID.OPT_LEVEL" value="com.ti.ccstudio.buildDefinitions.TMS470_20.2.compilerID.OPT_LEVEL.2" valueType="enumerated"/>
                                 <option id="com.ti.ccstudio.buildDefinitions.TMS470_20.2.compilerID.INCLUDE_PATH.1779146499" superClass="com.ti.ccstudio.buildDefinitions.TMS470_20.2.compilerID.INCLUDE_PATH" valueType="includePath">
                                     <listOptionValue value="${COM_TI_TM4C_INSTALL_DIR}"/>
+                                    <listOptionValue value="${COM_TI_TM4C_INSTALL_DIR}/usblib/host"/>
                                     <listOptionValue value="${PROJECT_ROOT}"/>
                                     <listOptionValue value="${COM_TI_TM4C_INSTALL_DIR}/third_party"/>
                                     <listOptionValue value="${SW_ROOT}/examples/boards/ek-tm4c1294xl"/>
@@ -81,6 +82,7 @@
                                 <option id="com.ti.ccstudio.buildDefinitions.TMS470_20.2.linkerID.OUTPUT_FILE.767772767" superClass="com.ti.ccstudio.buildDefinitions.TMS470_20.2.linkerID.OUTPUT_FILE" value="${ProjName}.out" valueType="string"/>
                                 <option id="com.ti.ccstudio.buildDefinitions.TMS470_20.2.linkerID.LIBRARY.71360682" superClass="com.ti.ccstudio.buildDefinitions.TMS470_20.2.linkerID.LIBRARY" valueType="libs">
                                     <listOptionValue value="${COM_TI_TM4C_LIBRARIES}"/>
+                                    <listOptionValue value="${COM_TI_TM4C_INSTALL_DIR}/usblib/ccs/Debug/usblib.lib"/>
                                     <listOptionValue value="${SW_ROOT}/driverlib/ccs/Debug/driverlib.lib"/>
                                     <listOptionValue value="libc.a"/>
                                 </option>
@@ -100,7 +102,7 @@
                         </toolChain>
                     </folderInfo>
                     <sourceEntries>
-                        <entry excluding="third_party/src/option/cc932.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+                        <entry excluding="draw_bitmap.c|image_loader.c|third_party/port/mmc-ek-tm4c1294xl.c|third_party/src/option/cc932.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
                     </sourceEntries>
                 </configuration>
             </storageModule>

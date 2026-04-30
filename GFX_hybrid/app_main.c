@@ -1,4 +1,7 @@
 
+
+#define ENABLE_LFN
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -37,16 +40,17 @@
 #include "forms_manager.h"
 #include "gesture_engine.h"
 #include "graphics_engine.h"
-#include "hal_spi.h"
-#include "image_wrapper.h"
-#include "sdram_hal.h"
-#include "sdspi_hal.h"
+#include "hal_tft_spi.h"
+#include "hal_sdram.h"
+#include "hal_usd.h"
 #include "tiva_log.h"
 #include "event_engine.h"
 #include "video_engine.h"
 #include "hal_eeprom.h"
 #include "rtc_module.h"
 #include "test/control_sim.h"
+#include "hal_usb.h"
+#include "file_manager.h"
 
 #include "draw_bitmap.h"
 #include "gfx_theme.h"
@@ -84,7 +88,8 @@ int _system_pre_init(void) {
   MAP_SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL |
                           SYSCTL_CFG_VCO_240),
                          g_ui32SysClock);
-  ConfigureEPI();
+
+  HAL_SDRAM_ConfigureEPI();
   return 1;
 }
 
@@ -112,18 +117,21 @@ int main(void) {
   // Configure the UART for system output
   ConfigureUART();
 
+  TIVA_LOGI(TASK_NAME, "Starting application...");
+
   // Init RTC
   initRTCModule();
 
-  TIVA_LOGI(TASK_NAME, "Starting application...");
+  // Init USB
+  HAL_USB_Init();
 
   Gfx_initEngine(LCD_WIDTH, LCD_HEIGHT);
 
-  if (!SDSPI_MountFilesystem()) {
+  if (!HAL_uSD_init()) {
     SysCtlDelay(MS_2_CLK(100));
   }
   TIVA_LOGI(TASK_NAME, "Setting up Screen SPI...");
-  HAL_SPI_Init();
+  HAL_TFT_SPI_Init();
   TIVA_LOGI(TASK_NAME, "SPI set up successfully!");
   TIVA_LOGI(TASK_NAME, "Initial FT81x state...");
   TIVA_LOGI(TASK_NAME, "Awaking screen...");
@@ -153,6 +161,7 @@ int main(void) {
   Theme_SetModeHigh(true);
   // Play fullscreen with no-tear and audio
   EVE_VideoResult_t eResult = EVE_Video_Play(
+	  DRIVE_SD,
       "s_hd2.avi",
       OPT_FULLSCREEN | OPT_NOTEAR | OPT_MEDIAFIFO
   );
@@ -183,6 +192,8 @@ int main(void) {
     gestureEngineTask();
 
 	controlSimulatiorTask();
+
+	HAL_USB_Task();
 
 	Event_Dispatch();
   } 

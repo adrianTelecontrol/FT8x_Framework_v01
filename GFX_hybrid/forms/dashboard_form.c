@@ -8,7 +8,6 @@
 #include "EVE_colors.h"
 #include "gfx_canvas.h"
 #include "forms_manager.h"
-#include "sdspi_hal.h"
 
 #include "helpers.h"
 #include "gfx_theme.h"
@@ -103,7 +102,7 @@ static char t2Buffer[16] = "25.1 C";
 static char t3Buffer[16] = "23.8 C";
 static char vinBuffer[16]  = "24.0 V";
 static char voutBuffer[16] = "5.0 V";
-static char statusBuffer[32] = "NOMINAL";
+static char statusBuffer[32] = "DISCONNECTED";
 
 
 // ==========================================
@@ -139,6 +138,31 @@ static void onStatusValueChanged(EventParam_t arg) {
 	strcpy(statusBuffer, arg.str);
 	statusValueData.bIsDirty = true;
 }
+
+static void onUSBConnected(EventParam_t arg) {
+	strcpy(statusBuffer, "CONNECTED");
+	statusValueData.style = STYLE_SUCCESS;
+	statusValueData.bIsDirty = true;
+}
+
+static void onUSBDisconnected(EventParam_t arg) {
+	strcpy(statusBuffer, "DISCONNECTED");
+	statusValueData.style = STYLE_DANGER;
+	statusValueData.bIsDirty = true;
+}
+
+static void onUSBUnknownDevice(EventParam_t arg) {
+	strcpy(statusBuffer, "UNKNOWN");
+	statusValueData.style = STYLE_DANGER;
+	statusValueData.bIsDirty = true;
+}
+
+static void onUSBPowerFault(EventParam_t arg) {
+	strcpy(statusBuffer, "PWR FAULT");
+	statusValueData.style = STYLE_DANGER;
+	statusValueData.bIsDirty = true;
+}
+
 
 // ==========================================
 // 4. Initialization Function
@@ -295,7 +319,7 @@ void initDashboardForm(void)
     voutLabelData = (gfx_Label){ .text = "Vout", .name = "vout", .pos.x = 440, .pos.y = voutPanelData.pos.y + voutPanelData.dim.height / 2, .alignment = ( gfx_Align_e )(ALIGN_LEFT | ALIGN_VCENTER), .typo = TYPO_BODY, .style = STYLE_TEXT_MAIN, .isVisible = true };
     voutLabelWidget.eWidgetType = WD_TYPE_LABEL; voutLabelWidget.pvWidget = (void *)&voutLabelData;
 
-    statusLabelData = (gfx_Label){ .text = "Status", .name = "sysSt", .pos.x = 440, .pos.y = statusPanelData.pos.y + statusPanelData.dim.height / 2, .alignment = ( gfx_Align_e )(ALIGN_LEFT | ALIGN_VCENTER), .typo = TYPO_BODY, .style = STYLE_TEXT_MAIN, .isVisible = true };
+    statusLabelData = (gfx_Label){ .text = "USB", .name = "sysSt", .pos.x = 440, .pos.y = statusPanelData.pos.y + statusPanelData.dim.height / 2, .alignment = ( gfx_Align_e )(ALIGN_LEFT | ALIGN_VCENTER), .typo = TYPO_BODY, .style = STYLE_TEXT_MAIN, .isVisible = true };
     statusLabelWidget.eWidgetType = WD_TYPE_LABEL; statusLabelWidget.pvWidget = (void *)&statusLabelData;
 
     vinValueData = (gfx_Label){ .text = vinBuffer, .name = "vinVal", .pos.x = vinPanelData.pos.x + vinPanelData.dim.width - 30, .pos.y = vinPanelData.pos.y + indicatorHeight / 2, .alignment = (gfx_Align_e)(ALIGN_RIGHT | ALIGN_VCENTER), .typo = TYPO_H1, .style = STYLE_SUCCESS, .isVisible = true };
@@ -304,7 +328,7 @@ void initDashboardForm(void)
     voutValueData = (gfx_Label){ .text = voutBuffer, .name = "voutVal", .pos.x = voutPanelData.pos.x + voutPanelData.dim.width - 30, .pos.y = voutPanelData.pos.y + indicatorHeight / 2, .alignment = (gfx_Align_e)(ALIGN_RIGHT | ALIGN_VCENTER), .typo = TYPO_H1, .style = STYLE_DANGER, .isVisible = true };
     voutValueWidget.eWidgetType = WD_TYPE_LABEL; voutValueWidget.pvWidget = (void *)&voutValueData;
 
-    statusValueData = (gfx_Label){ .text = statusBuffer, .name = "tval3", .pos.x = statusPanelData.pos.x + statusPanelData.dim.width - 30, .pos.y = statusPanelData.pos.y + indicatorHeight / 2, .alignment = (gfx_Align_e)(ALIGN_RIGHT | ALIGN_VCENTER), .typo = TYPO_H1, .style = STYLE_SECONDARY, .isVisible = true };
+    statusValueData = (gfx_Label){ .text = statusBuffer, .name = "tval3", .pos.x = statusPanelData.pos.x + statusPanelData.dim.width - 30, .pos.y = statusPanelData.pos.y + indicatorHeight / 2, .alignment = (gfx_Align_e)(ALIGN_RIGHT | ALIGN_VCENTER), .typo = TYPO_H2, .style = STYLE_DANGER, .isVisible = true };
     statusValueWidget.eWidgetType = WD_TYPE_LABEL; statusValueWidget.pvWidget = (void *)&statusValueData;
 
 
@@ -353,7 +377,11 @@ void initDashboardForm(void)
 	Event_Subscribe(EVT_SYS_T3_VAL_CHANGED, ( EventHandler_fn ) onT3ValueChanged);
 	Event_Subscribe(EVT_SYS_VIN_VAL_CHANGED, ( EventHandler_fn ) onVinValueChanged);
 	Event_Subscribe(EVT_SYS_VOUT_VAL_CHANGED, ( EventHandler_fn ) onVoutValueChanged);
-	Event_Subscribe(EVT_SYS_STATUS_CHANGED, (EventHandler_fn) onStatusValueChanged);
+	// Event_Subscribe(EVT_SYS_STATUS_CHANGED, (EventHandler_fn) onStatusValueChanged);
+	Event_Subscribe(EVT_SYS_USB_CONNECTED, (EventHandler_fn) onUSBConnected);
+	Event_Subscribe(EVT_SYS_USB_DISCONNECTED, (EventHandler_fn) onUSBDisconnected);
+	Event_Subscribe(EVT_SYS_USB_POWER_FAULT, (EventHandler_fn)onUSBPowerFault);
+	Event_Subscribe(EVT_SYS_USB_UNKNOWN_DEVICE, (EventHandler_fn)onUSBUnknownDevice);
 
     // Register Form
     g_i16DashboardFormID = formManagerAddForm(&g_sSystemCanvas);

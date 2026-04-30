@@ -108,7 +108,7 @@ typedef enum {
  *
  * @return EVE_VideoResult_t status code.
  */
-EVE_VideoResult_t EVE_Video_Play(const char *pcFileName, uint32_t ui32Options);
+EVE_VideoResult_t EVE_Video_Play(const char* drive, const char *pcFileName, uint32_t ui32Options);
 
 /**
  * @brief  Convert an EVE_VideoResult_t code to a human-readable string.

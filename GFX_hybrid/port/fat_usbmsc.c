@@ -59,7 +59,7 @@ USB_disk_initialize(
 DSTATUS USB_disk_status (
     BYTE drv)                   /* Physical drive number (0) */
 {
-    if (drv) return STA_NOINIT;        /* Supports only single drive */
+    //if (drv) return STA_NOINIT;        /* Supports only single drive */
     return USBStat;
 }
 
@@ -100,7 +100,7 @@ DRESULT USB_disk_write (
     DWORD sector,           /* Start sector number (LBA) */
     BYTE count)             /* Sector count (1..255) */
 {
-    if (ucDrive || !count) return RES_PARERR;
+    if (!count) return RES_PARERR;
     if (USBStat & STA_NOINIT) return RES_NOTRDY;
     if (USBStat & STA_PROTECT) return RES_WRPRT;
 

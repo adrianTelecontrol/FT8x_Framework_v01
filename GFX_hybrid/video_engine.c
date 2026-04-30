@@ -34,6 +34,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 /* FatFS */
@@ -44,6 +45,7 @@
 #include "EVE.h"
 #include "video_engine.h"
 #include "helpers.h"
+#include "file_manager.h"
 
 /* TivaWare */
 #include "driverlib/ssi.h"
@@ -54,8 +56,8 @@
 #include "tiva_log.h"
 
 /* HAL SPI helpers referenced in EVE.c */
-extern void HAL_SPI_CS_Enable(void);
-extern void HAL_SPI_CS_Disable(void);
+extern void HAL_TFT_SPI_CS_Enable(void);
+extern void HAL_TFT_SPI_CS_Disable(void);
 
 /* -----------------------------------------------------------------------
  * Private helpers
@@ -90,13 +92,13 @@ static uint32_t prv_WriteToMediaFifo(uint32_t ui32FifoBase,
 
     if (ui32Bytes <= ui32SpaceToEnd) {
         /* Single burst – no wrap */
-        HAL_SPI_CS_Enable();
+        HAL_TFT_SPI_CS_Enable();
         EVE_AddrForWr(ui32FifoBase + ui32WritePtr);
 		uint32_t i = 0;
         for (; i < ui32Bytes; i++) {
             EVE_Write8(pui8Data[i]);
         }
-        HAL_SPI_CS_Disable();
+        HAL_TFT_SPI_CS_Disable();
 
         ui32WritePtr += ui32Bytes;
         if (ui32WritePtr >= ui32FifoSize) {
@@ -108,21 +110,21 @@ static uint32_t prv_WriteToMediaFifo(uint32_t ui32FifoBase,
         uint32_t ui32Second = ui32Bytes - ui32First;
 
         /* First burst: to the end of the ring buffer */
-        HAL_SPI_CS_Enable();
+        HAL_TFT_SPI_CS_Enable();
         EVE_AddrForWr(ui32FifoBase + ui32WritePtr);
 		uint32_t i = 0;
         for (; i < ui32First; i++) {
             EVE_Write8(pui8Data[i]);
         }
-        HAL_SPI_CS_Disable();
+        HAL_TFT_SPI_CS_Disable();
 
         /* Second burst: from the beginning of the ring buffer */
-        HAL_SPI_CS_Enable();
+        HAL_TFT_SPI_CS_Enable();
         EVE_AddrForWr(ui32FifoBase);
         for (i = 0; i < ui32Second; i++) {
             EVE_Write8(pui8Data[ui32First + i]);
         }
-        HAL_SPI_CS_Disable();
+        HAL_TFT_SPI_CS_Disable();
 
         ui32WritePtr = ui32Second;
     }
@@ -155,9 +157,9 @@ static inline uint32_t prv_FifoFree(uint32_t ui32FifoSize,
 /* -----------------------------------------------------------------------
  * Public: EVE_Video_Play
  * --------------------------------------------------------------------- */
-EVE_VideoResult_t EVE_Video_Play(const char *pcFileName, uint32_t ui32Options)
+EVE_VideoResult_t EVE_Video_Play(const char* drive, const char *pcFileName, uint32_t ui32Options)
 {
-    if (pcFileName == NULL) {
+    if (pcFileName == NULL || drive == NULL) {
         return EVE_VIDEO_ERR_PARAM;
     }
 
@@ -172,8 +174,14 @@ EVE_VideoResult_t EVE_Video_Play(const char *pcFileName, uint32_t ui32Options)
     /* ------------------------------------------------------------------
      * 1. Open the AVI file on the SD card.
      * ---------------------------------------------------------------- */
+
+	char tempFilePath[20];
+	
+	snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", drive, pcFileName);
+    TIVA_LOGI(TAG, "BDF to fetch: %s", tempFilePath);
+	 
     FIL   hFile;
-    FRESULT iFRes = f_open(&hFile, pcFileName, FA_READ);
+    FRESULT iFRes = f_open(&hFile, tempFilePath, FA_READ);
     if (iFRes != FR_OK) {
         TIVA_LOGE(TAG, "f_open('%s') failed: %d", pcFileName, (int)iFRes);
         return EVE_VIDEO_ERR_OPEN;

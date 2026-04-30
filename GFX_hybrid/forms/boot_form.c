@@ -8,7 +8,6 @@
 #include "EVE_colors.h"
 #include "gfx_canvas.h"
 #include "forms_manager.h"
-#include "sdspi_hal.h"
 
 #include "common_widgets.h"
 #include "helpers.h"

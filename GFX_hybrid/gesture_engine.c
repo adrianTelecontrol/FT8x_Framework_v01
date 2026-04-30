@@ -5,7 +5,7 @@
 #include "hal_eeprom.h"
 #include "eeprom_map.h"
 #include "forms_manager.h"
-#include "hal_spi.h"
+#include "hal_tft_spi.h"
 #include "gfx.h"
 #include "helpers.h"
 

@@ -7,7 +7,8 @@
 #include <stdio.h>
 
 #include "helpers.h"
-#include "sdspi_hal.h"
+#include "hal_usd.h"
+#include "file_manager.h"
 
 #include "FT8xx_params.h"
 
@@ -319,10 +320,10 @@ int8_t gfx_fontLoadDynamic(gfx_FontFamily_e family, gfx_FontWeight_e weight,
   snprintf(filePath, sizeof(filePath), "FONTS/%s/%s_%d.BDF", familyStr,
            weightStr, numSize);
 
-  TIVA_LOGI(TASK_NAME, "Attempting to load: %s", filePath);
+  //TIVA_LOGI(TASK_NAME, "Attempting to load: %s", filePath);
 
   // 4. Load from SD SPI
-  if (SDSPI_FetchBDF(&g_FontCache[freeSlot].bdfData, filePath, 32, 126)) {
+  if (FM_FetchBDF(DRIVE_SD, filePath, &g_FontCache[freeSlot].bdfData, 32, 126)) {
     g_FontCache[freeSlot].family = family;
     g_FontCache[freeSlot].weight = weight;
     g_FontCache[freeSlot].size = size;

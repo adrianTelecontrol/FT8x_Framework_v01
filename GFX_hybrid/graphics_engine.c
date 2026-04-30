@@ -28,7 +28,7 @@
 #include "forms_manager.h"
 #include "gfx.h"
 #include "graphics_engine.h"
-#include "hal_spi.h"
+#include "hal_tft_spi.h"
 #include "helpers.h"
 
 #include "forms/graph_form.h"
@@ -113,7 +113,7 @@ void SSI3IntHandler(void) {
         if (MAP_uDMAChannelIsEnabled(UDMA_CH15_SSI3TX)) return;
 
     while (MAP_SSIBusy(SSI3_BASE));
-    HAL_SPI_CS_Disable();
+    HAL_TFT_SPI_CS_Disable();
 
     if (g_bIsJobTransfer && g_DMAQueue.count > 0) {
 
@@ -127,7 +127,7 @@ void SSI3IntHandler(void) {
 
             DMARenderJob_t nextJob = g_DMAQueue.jobs[g_DMAQueue.tail];
 
-            HAL_SPI_CS_Enable();
+            HAL_TFT_SPI_CS_Enable();
 
             if (g_bIsQuadActive) {
                 MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
@@ -186,7 +186,7 @@ void SSI3IntHandler(void) {
 
     while (MAP_SSIBusy(SSI3_BASE))
       ;
-    HAL_SPI_CS_Disable();
+    HAL_TFT_SPI_CS_Disable();
 
     if (g_bIsJobTransfer) {
 
@@ -202,7 +202,7 @@ void SSI3IntHandler(void) {
 
         DMARenderJob_t nextJob = g_DMAQueue.jobs[g_DMAQueue.tail];
 
-        HAL_SPI_CS_Enable();
+        HAL_TFT_SPI_CS_Enable();
 
         if (g_bIsQuadActive) {
           MAP_SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
@@ -737,7 +737,7 @@ void Gfx_sendFullFrame(bool bIsBlocking) {
 
   Gfx_BuildSG_For_Buffer((uint8_t *)g_pDrawingBuffer);
 
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
   EVE_AddrForWr(RAM_G);
 
   while (MAP_SSIBusy(SSI3_BASE))
@@ -746,7 +746,7 @@ void Gfx_sendFullFrame(bool bIsBlocking) {
   Gfx_Start_SG_Transfer(bIsBlocking);
 
   if (bIsBlocking) {
-    HAL_SPI_CS_Disable();
+    HAL_TFT_SPI_CS_Disable();
     g_bIsBackgroundReady = true;
   }
 }
@@ -781,7 +781,7 @@ void Gfx_SendContinuousBlock_SG(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
   Gfx_BuildDynamicSG(pSrcSDRAM, totalBytesToSend);
 
   // 4. Assert CS and manually send the single address
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
   HWREG(SSI3_BASE + SSI_O_DR) = (startingRAMG >> 16) | 0x80;
   HWREG(SSI3_BASE + SSI_O_DR) = (startingRAMG >> 8) & 0xFF;
   HWREG(SSI3_BASE + SSI_O_DR) = startingRAMG & 0xFF;
@@ -794,7 +794,7 @@ void Gfx_SendContinuousBlock_SG(pixel16_t *pActiveBuffer, int16_t x, int16_t y,
   // g_RenderEngine.state = RENDER_WAIT_SG_ISR;
 
   // 6. Release CS to complete the FT81x transaction
-  // HAL_SPI_CS_Disable();
+  // HAL_TFT_SPI_CS_Disable();
 }
 
 bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
@@ -1000,7 +1000,7 @@ void Gfx_renderTask(void) {
         g_DMAQueue.tail = (g_DMAQueue.tail + 1) % MAX_DMA_JOBS;
         g_DMAQueue.count--;
 
-        HAL_SPI_CS_Enable();
+        HAL_TFT_SPI_CS_Enable();
 
         uint8_t *pData = (uint8_t *)job.pSrcSDRAM;
         uint32_t i = 0;
@@ -1018,7 +1018,7 @@ void Gfx_renderTask(void) {
         } else {
           EVE_AddrForWr(job.destRAMG);
           for (i = 0; i < job.length; i++) {
-            HAL_SPI_ReadWrite8(pData[i]);
+            HAL_TFT_SPI_ReadWrite8(pData[i]);
           }
         }
 
@@ -1026,7 +1026,7 @@ void Gfx_renderTask(void) {
         while (MAP_SSIBusy(SSI3_BASE)) {
         }
 
-        HAL_SPI_CS_Disable();
+        HAL_TFT_SPI_CS_Disable();
       }
 
       // Toda la RAM_G ha sido actualizada, pasamos a renderizar EVE

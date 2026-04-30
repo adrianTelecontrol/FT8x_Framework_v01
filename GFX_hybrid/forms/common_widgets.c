@@ -11,7 +11,7 @@
 #include "font_engine.h"
 #include "gfx_theme.h"
 #include "forms_manager.h"
-#include "sdspi_hal.h"
+#include "file_manager.h"
 
 #include "common_widgets.h"
 
@@ -109,7 +109,6 @@ static void onRTCTimeChanged(EventParam_t arg) {
 
 void initCommonWidgets(void) {
 
-
     dateData = (gfx_Label){
         .text = dateBuffer,
         .name = "dateWidget",
@@ -191,7 +190,7 @@ void initCommonWidgets(void) {
 		.scale = 1,
 	};
 
-	if(!SDSPI_LoadEVEImage(&tcLogoImgData, "logo_tc.png", EVE_FREE_RAMG_START)) {
+	if(!FM_LoadEVEImage(DRIVE_SD, "logo_tc.png", &tcLogoImgData, EVE_FREE_RAMG_START)) {
 		TIVA_LOGE(TAG, "Fallo al cargar logo_tc.png en EVE");
 	}
 

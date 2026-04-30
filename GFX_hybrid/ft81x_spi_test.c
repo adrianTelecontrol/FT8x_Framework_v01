@@ -17,7 +17,7 @@
 #include "FT8xx.h"
 #include "helpers.h"
 #include "EVE.h"
-#include "hal_spi.h"
+#include "hal_tft_spi.h"
 #include "tiva_log.h"
 
 #include "ft81x_spi_test.h"

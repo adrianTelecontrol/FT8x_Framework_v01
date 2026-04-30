@@ -19,7 +19,7 @@
 
 #include "FT8xx.h"
 #include "FT8xx_params.h"
-#include "hal_spi.h"
+#include "hal_tft_spi.h"
 #include "helpers.h"
 #include "tiva_config.h"
 #include "tiva_log.h"
@@ -136,7 +136,7 @@ void EVE_Write8(uint8_t ftData8) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
   } else {
-    HAL_SPI_ReadWrite8(ftData8);
+    HAL_TFT_SPI_ReadWrite8(ftData8);
   }
 }
 
@@ -149,8 +149,8 @@ void EVE_Write16(uint16_t ftData16) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
   } else {
-    HAL_SPI_ReadWrite8((uint8_t)(ftData16));
-    HAL_SPI_ReadWrite8((uint8_t)(ftData16 >> 8));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftData16));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftData16 >> 8));
   }
 }
 
@@ -165,10 +165,10 @@ void EVE_Write32(uint32_t ftData32) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
   } else {
-    HAL_SPI_ReadWrite8((uint8_t)(ftData32));
-    HAL_SPI_ReadWrite8((uint8_t)(ftData32 >> 8));
-    HAL_SPI_ReadWrite8((uint8_t)(ftData32 >> 16));
-    HAL_SPI_ReadWrite8((uint8_t)(ftData32 >> 24));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftData32));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftData32 >> 8));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftData32 >> 16));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftData32 >> 24));
   }
 }
 
@@ -177,7 +177,7 @@ uint8_t EVE_Read8(void) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash)); // drain addr phase garbage
 
-    HAL_SPI_RX();
+    HAL_TFT_SPI_RX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_READ);
     SSIDataPut(SSI3_BASE, 0x00);
     while (SSIBusy(SSI3_BASE));
@@ -186,10 +186,10 @@ uint8_t EVE_Read8(void) {
     SSIDataGet(SSI3_BASE, &b0);
 
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     return (uint8_t)b0;
   } else {
-    return HAL_SPI_ReadWrite8(0x00);
+    return HAL_TFT_SPI_ReadWrite8(0x00);
   }
 }
 
@@ -198,7 +198,7 @@ uint16_t EVE_Read16(void) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
 
-    HAL_SPI_RX();
+    HAL_TFT_SPI_RX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_READ);
     SSIDataPut(SSI3_BASE, 0x00);
     SSIDataPut(SSI3_BASE, 0x00);
@@ -209,13 +209,13 @@ uint16_t EVE_Read16(void) {
     SSIDataGet(SSI3_BASE, &b1);
 
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     return (uint16_t)((b1 << 8) | b0);
   } else {
     uint16_t ftData16 = 0;
-    uint16_t temp = HAL_SPI_ReadWrite8(0x00);
+    uint16_t temp = HAL_TFT_SPI_ReadWrite8(0x00);
     ftData16 = temp;
-    temp = ((HAL_SPI_ReadWrite8(0x00) << 8) & 0xFF00);
+    temp = ((HAL_TFT_SPI_ReadWrite8(0x00) << 8) & 0xFF00);
     return ftData16 | temp;
   }
 }
@@ -225,7 +225,7 @@ uint32_t EVE_Read32(void) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
 
-    HAL_SPI_RX();
+    HAL_TFT_SPI_RX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_READ);
     SSIDataPut(SSI3_BASE, 0x00);
     SSIDataPut(SSI3_BASE, 0x00);
@@ -240,38 +240,38 @@ uint32_t EVE_Read32(void) {
     SSIDataGet(SSI3_BASE, &b3);
 
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     return (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
   } else {
     uint32_t ftData32 = 0;
-    uint32_t temp = HAL_SPI_ReadWrite8(0x00);
+    uint32_t temp = HAL_TFT_SPI_ReadWrite8(0x00);
     ftData32 = temp;
-    temp = ((HAL_SPI_ReadWrite8(0x00) << 8)  & 0x0000FF00); ftData32 |= temp;
-    temp = ((HAL_SPI_ReadWrite8(0x00) << 16) & 0x00FF0000); ftData32 |= temp;
-    temp = ((HAL_SPI_ReadWrite8(0x00) << 24) & 0xFF000000); ftData32 |= temp;
+    temp = ((HAL_TFT_SPI_ReadWrite8(0x00) << 8)  & 0x0000FF00); ftData32 |= temp;
+    temp = ((HAL_TFT_SPI_ReadWrite8(0x00) << 16) & 0x00FF0000); ftData32 |= temp;
+    temp = ((HAL_TFT_SPI_ReadWrite8(0x00) << 24) & 0xFF000000); ftData32 |= temp;
     return ftData32;
   }
 }
 
 void EVE_AddrForWr(uint32_t ftAddress) {
   if (g_bIsQuadActive) {
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
     SSIDataPut(SSI3_BASE, (uint8_t)((ftAddress >> 16) | MEM_WRITE));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress >> 8));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress));
     // No busy wait here — caller is responsible for completing the transaction
   } else {
-    HAL_SPI_SingleMode();
-    HAL_SPI_ReadWrite8((uint8_t)((ftAddress >> 16) | MEM_WRITE));
-    HAL_SPI_ReadWrite8((uint8_t)(ftAddress >> 8));
-    HAL_SPI_ReadWrite8((uint8_t)(ftAddress));
+    HAL_TFT_SPI_SingleMode();
+    HAL_TFT_SPI_ReadWrite8((uint8_t)((ftAddress >> 16) | MEM_WRITE));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftAddress >> 8));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftAddress));
   }
 }
 
 void EVE_AddrForRd(uint32_t ftAddress) {
   if (g_bIsQuadActive) {
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
     SSIDataPut(SSI3_BASE, (uint8_t)((ftAddress >> 16) | MEM_READ));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress >> 8));
@@ -279,11 +279,11 @@ void EVE_AddrForRd(uint32_t ftAddress) {
     SSIDataPut(SSI3_BASE, 0x00); // 1 dummy byte
     // No busy wait here — caller is responsible
   } else {
-    HAL_SPI_SingleMode();
-    HAL_SPI_ReadWrite8((uint8_t)((ftAddress >> 16) | MEM_READ));
-    HAL_SPI_ReadWrite8((uint8_t)(ftAddress >> 8));
-    HAL_SPI_ReadWrite8((uint8_t)(ftAddress));
-    HAL_SPI_ReadWrite8(0x00);
+    HAL_TFT_SPI_SingleMode();
+    HAL_TFT_SPI_ReadWrite8((uint8_t)((ftAddress >> 16) | MEM_READ));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftAddress >> 8));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(ftAddress));
+    HAL_TFT_SPI_ReadWrite8(0x00);
   }
 }
 
@@ -293,10 +293,10 @@ void EVE_AddrForRd(uint32_t ftAddress) {
 // ============================================================
 
 void EVE_MemWrite8(uint32_t ftAddress, uint8_t ftData8) {
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   if (g_bIsQuadActive) {
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
     SSIDataPut(SSI3_BASE, (uint8_t)((ftAddress >> 16) | MEM_WRITE));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress >> 8));
@@ -309,19 +309,19 @@ void EVE_MemWrite8(uint32_t ftAddress, uint8_t ftData8) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
   } else {
-    HAL_SPI_SingleMode();
+    HAL_TFT_SPI_SingleMode();
     EVE_AddrForWr(ftAddress);
     EVE_Write8(ftData8);
   }
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
 }
 
 void EVE_MemWrite16(uint32_t ftAddress, uint16_t ftData16) {
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   if (g_bIsQuadActive) {
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
     SSIDataPut(SSI3_BASE, (uint8_t)((ftAddress >> 16) | MEM_WRITE));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress >> 8));
@@ -334,19 +334,19 @@ void EVE_MemWrite16(uint32_t ftAddress, uint16_t ftData16) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
   } else {
-    HAL_SPI_SingleMode();
+    HAL_TFT_SPI_SingleMode();
     EVE_AddrForWr(ftAddress);
     EVE_Write16(ftData16);
   }
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
 }
 
 void EVE_MemWrite32(uint32_t ftAddress, uint32_t ftData32) {
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   if (g_bIsQuadActive) {
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
     SSIDataPut(SSI3_BASE, (uint8_t)((ftAddress >> 16) | MEM_WRITE));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress >> 8));
@@ -361,12 +361,12 @@ void EVE_MemWrite32(uint32_t ftAddress, uint32_t ftData32) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
   } else {
-    HAL_SPI_SingleMode();
+    HAL_TFT_SPI_SingleMode();
     EVE_AddrForWr(ftAddress);
     EVE_Write32(ftData32);
   }
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
 }
 
 // ============================================================
@@ -376,10 +376,10 @@ void EVE_MemWrite32(uint32_t ftAddress, uint32_t ftData32) {
 
 uint8_t EVE_MemRead8(uint32_t ftAddress) {
   uint8_t ftData8 = 0;
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   if (g_bIsQuadActive) {
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
     SSIDataPut(SSI3_BASE, (uint8_t)((ftAddress >> 16) | MEM_READ));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress >> 8));
@@ -391,7 +391,7 @@ uint8_t EVE_MemRead8(uint32_t ftAddress) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
 
-    HAL_SPI_RX();
+    HAL_TFT_SPI_RX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_READ);
     SSIDataPut(SSI3_BASE, 0x00); // generate 8 read clocks
     while (SSIBusy(SSI3_BASE));
@@ -402,23 +402,23 @@ uint8_t EVE_MemRead8(uint32_t ftAddress) {
     ftData8 = (uint8_t)b0;
 
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
   } else {
-    HAL_SPI_SingleMode();
+    HAL_TFT_SPI_SingleMode();
     EVE_AddrForRd(ftAddress);
     ftData8 = EVE_Read8();
   }
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
   return ftData8;
 }
 
 uint16_t EVE_MemRead16(uint32_t ftAddress) {
   uint16_t ftData16 = 0;
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   if (g_bIsQuadActive) {
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
     SSIDataPut(SSI3_BASE, (uint8_t)((ftAddress >> 16) | MEM_READ));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress >> 8));
@@ -430,7 +430,7 @@ uint16_t EVE_MemRead16(uint32_t ftAddress) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
 
-    HAL_SPI_RX();
+    HAL_TFT_SPI_RX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_READ);
     SSIDataPut(SSI3_BASE, 0x00); // generate clocks for b0
     SSIDataPut(SSI3_BASE, 0x00); // generate clocks for b1
@@ -443,23 +443,23 @@ uint16_t EVE_MemRead16(uint32_t ftAddress) {
     ftData16 = (uint16_t)((b1 << 8) | b0);
 
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
   } else {
-    HAL_SPI_SingleMode();
+    HAL_TFT_SPI_SingleMode();
     EVE_AddrForRd(ftAddress);
     ftData16 = EVE_Read16();
   }
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
   return ftData16;
 }
 
 uint32_t EVE_MemRead32(uint32_t ftAddress) {
   uint32_t ftData32 = 0;
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   if (g_bIsQuadActive) {
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
     SSIDataPut(SSI3_BASE, (uint8_t)((ftAddress >> 16) | MEM_READ));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress >> 8));
@@ -471,7 +471,7 @@ uint32_t EVE_MemRead32(uint32_t ftAddress) {
     uint32_t trash;
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
 
-    HAL_SPI_RX();
+    HAL_TFT_SPI_RX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_READ);
     SSIDataPut(SSI3_BASE, 0x00); // generate clocks for b0
     SSIDataPut(SSI3_BASE, 0x00); // generate clocks for b1
@@ -488,19 +488,19 @@ uint32_t EVE_MemRead32(uint32_t ftAddress) {
     ftData32 = (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
 
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
   } else {
-    HAL_SPI_SingleMode();
+    HAL_TFT_SPI_SingleMode();
     EVE_AddrForRd(ftAddress);
     ftData32 = EVE_Read32();
   }
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
   return ftData32;
 }
 
 void EVE_CmdWrite(uint8_t EVECmd, uint8_t Param) {
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
   
   if (g_bIsQuadActive) {
     // Los comandos de host también deben usar el hardware avanzado
@@ -512,12 +512,12 @@ void EVE_CmdWrite(uint8_t EVECmd, uint8_t Param) {
     // Crítico: No levantar CS hasta que el comando físico termine de salir
     while (SSIBusy(SSI3_BASE)); 
   } else {
-    HAL_SPI_ReadWrite8((uint8_t)(EVECmd));
-    HAL_SPI_ReadWrite8((uint8_t)(Param));
-    HAL_SPI_ReadWrite8(0x00);
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(EVECmd));
+    HAL_TFT_SPI_ReadWrite8((uint8_t)(Param));
+    HAL_TFT_SPI_ReadWrite8(0x00);
   }
   
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
 }
 
 // ######################## SUPPORTING FUNCTIONS ###############################
@@ -646,7 +646,7 @@ void EVE_Init(void) {
 
   EVE_MemWrite8(REG_SPI_WIDTH, 0x02);
 
-  HAL_SPI_SwitchTo_Quad();
+  HAL_TFT_SPI_SwitchTo_Quad();
 
   while (EVE_MemRead8(REG_ID) != FT81x_CHIP_ID_VALUE) {
     TIVA_LOGE(TASK_NAME, "Error! FT81x ID mismatch! Retrying...");
@@ -729,17 +729,17 @@ void EVE_Init(void) {
             "FT81x init finished! Changing SPI3 to high bitrate < 30MHz");
   SysCtlDelay(MS_2_CLK(100));
   
-  HAL_SPI_SetHighSpeed();
+  HAL_TFT_SPI_SetHighSpeed();
 }
 
 void EVE_ReadMemoryBlock(uint32_t ftAddress, uint8_t *destBuffer, uint32_t numBytes) {
   if (numBytes == 0) return;
 
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   if (g_bIsQuadActive) {
     // 1. Address phase — TM4C drives all 4 lines
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
     SSIDataPut(SSI3_BASE, (uint8_t)((ftAddress >> 16) | MEM_READ));
     SSIDataPut(SSI3_BASE, (uint8_t)(ftAddress >> 8));
@@ -753,7 +753,7 @@ void EVE_ReadMemoryBlock(uint32_t ftAddress, uint8_t *destBuffer, uint32_t numBy
     while (SSIDataGetNonBlocking(SSI3_BASE, &trash));
 
     // 3. Flip bus to read direction
-    HAL_SPI_RX();
+    HAL_TFT_SPI_RX();
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_READ);
 
     // 4. Pipelined read — feed dummy bytes to generate clocks,
@@ -780,10 +780,10 @@ void EVE_ReadMemoryBlock(uint32_t ftAddress, uint8_t *destBuffer, uint32_t numBy
 
     // 5. Restore to write mode and TX direction
     SSIAdvModeSet(SSI3_BASE, SSI_ADV_MODE_QUAD_WRITE);
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
 
   } else {
-    HAL_SPI_SingleMode();
+    HAL_TFT_SPI_SingleMode();
     EVE_AddrForRd(ftAddress);
 	uint32_t i = 0;
     for (; i < numBytes; i++) {
@@ -791,19 +791,19 @@ void EVE_ReadMemoryBlock(uint32_t ftAddress, uint8_t *destBuffer, uint32_t numBy
     }
   }
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
 }
 
 void API_WakeUpScreen(void) {
-  HAL_SPI_PD_Low();
+  HAL_TFT_SPI_PD_Low();
   SysCtlDelay(MS_2_CLK(30)); // 350
 
-  HAL_SPI_PD_High();
+  HAL_TFT_SPI_PD_High();
   SysCtlDelay(MS_2_CLK(30)); // Must be at least 20ms
-  HAL_SPI_PD_Low();
+  HAL_TFT_SPI_PD_Low();
   SysCtlDelay(MS_2_CLK(30)); // 350
 
-  HAL_SPI_PD_High();
+  HAL_TFT_SPI_PD_High();
   SysCtlDelay(MS_2_CLK(30)); // Must be at least 20ms
 
   EVE_Init();
@@ -814,7 +814,7 @@ void API_LIB_BeginCoProList(void) {
   API_LIB_AwaitCoProEmpty(); // Wait for command FIFO to be empty and record
                              // current position in FIFO
 
-  HAL_SPI_CS_Enable(); // AVS                                            // CS
+  HAL_TFT_SPI_CS_Enable(); // AVS                                            // CS
                        // low begins SPI transaction
   EVE_AddrForWr(RAM_CMD + cmdOffset); // Send address for writing as the next
                                       // free location in the co-pro buffer
@@ -822,7 +822,7 @@ void API_LIB_BeginCoProList(void) {
 
 // Ends co-pro list for display creation
 void API_LIB_EndCoProList(void) {
-  HAL_SPI_CS_Disable(); // AVS // Chip Select high concludes burst
+  HAL_TFT_SPI_CS_Disable(); // AVS // Chip Select high concludes burst
 
   EVE_MemWrite32(REG_CMD_WRITE,
                  (cmdOffset)); // Update the ring buffer pointer
@@ -847,7 +847,7 @@ void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
   uint32_t ui32CurrChunkSize = 0;
 
   // 1. Start SPI Transaction
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   // 2. Send Address Header
   EVE_AddrForWr(ui32DestAddr);
@@ -859,7 +859,7 @@ void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
     // uDMA hardware limit is 1024 items
     ui32CurrChunkSize = (ui32BytesRmd > 1024) ? 1024 : ui32BytesRmd;
 
-    HAL_SPI_uDMATransfer(&pui8ImgSrc[ui32BytesSent], NULL, ui32CurrChunkSize,
+    HAL_TFT_SPI_uDMATransfer(&pui8ImgSrc[ui32BytesSent], NULL, ui32CurrChunkSize,
                          true);
 
     ui32BytesSent += ui32CurrChunkSize;
@@ -887,12 +887,12 @@ void API_LIB_WriteDataRAMG_uDMA(const uint8_t *pui8ImgSrc,
   while (SSIDataGetNonBlocking(SSI3_BASE, &ui32Trash))
     ;
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
 }
 
 void API_LIB_WriteDataRAMG_ui32(const uint32_t *ImgData, uint32_t DataSize,
                                 uint32_t DestAddress) {
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   // Send destination address (RAM_G + Offset)
   EVE_AddrForWr(DestAddress);
@@ -902,14 +902,14 @@ void API_LIB_WriteDataRAMG_ui32(const uint32_t *ImgData, uint32_t DataSize,
     EVE_Write32(*(ImgData++));
   }
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
 }
 
 void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
                            uint32_t DestAddress) {
   uint32_t DataPointer = 0;
 
-  HAL_SPI_CS_Enable();
+  HAL_TFT_SPI_CS_Enable();
 
   // Send destination address (RAM_G + Offset)
   EVE_AddrForWr(DestAddress);
@@ -938,7 +938,7 @@ void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
     }
   }
 
-  HAL_SPI_CS_Disable();
+  HAL_TFT_SPI_CS_Disable();
 }
 /*
 // Writes a block of data to the RAM_G
@@ -949,7 +949,7 @@ void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
 
   DataPointer = 0;
 
-  HAL_SPI_CS_Enable(); // AVS // CS low begins SPI transaction
+  HAL_TFT_SPI_CS_Enable(); // AVS // CS low begins SPI transaction
   EVE_AddrForWr(
           DestAddress); // Send address to which first value will be written
 
@@ -974,7 +974,7 @@ void API_LIB_WriteDataRAMG(const uint8_t *ImgData, uint32_t DataSize,
         EVE_Write8(0x00);
   }
 
-  HAL_SPI_CS_Disable(); // AVS // CS high after burst write of image data
+  HAL_TFT_SPI_CS_Disable(); // AVS // CS high after burst write of image data
 }*/
 
 // Writes a string over SPI
@@ -1055,7 +1055,7 @@ void API_LIB_WriteDataToCMD(const uint8_t *ImgData, uint32_t TotalDataSize) {
     }
 
     CurrentChunk = 0;
-    HAL_SPI_CS_Enable();                // AVS // Begin an SPI burst write
+    HAL_TFT_SPI_CS_Enable();                // AVS // Begin an SPI burst write
     EVE_AddrForWr(RAM_CMD + cmdOffset); // to the next location in the FIFO
 
     while (CurrentIndex < Target) // From current index value, keep sending and
@@ -1092,7 +1092,7 @@ void API_LIB_WriteDataToCMD(const uint8_t *ImgData, uint32_t TotalDataSize) {
       }
     }
 
-    HAL_SPI_CS_Disable(); // AVS // End the SPI burst
+    HAL_TFT_SPI_CS_Disable(); // AVS // End the SPI burst
 
     cmdOffset = EVE_IncCMDOffset(
         cmdOffset, (CurrentChunk)); // Calculate where end of data lies

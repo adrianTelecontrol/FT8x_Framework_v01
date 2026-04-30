@@ -54,6 +54,7 @@ extern void _c_int00(void);
 extern void SysTickHandler(void);
 extern void UARTStdioIntHandler(void);
 extern void SSI3IntHandler(void);
+extern void USB0OTGModeIntHandler();
 //*****************************************************************************
 //
 // Linker variable that marks the top of the stack.
@@ -130,7 +131,7 @@ void (* const g_pfnVectors[])(void) =
     IntDefaultHandler,                      // CAN1
     IntDefaultHandler,                      // Ethernet
     IntDefaultHandler,                      // Hibernate
-    IntDefaultHandler,                      // USB0
+    USB0OTGModeIntHandler,                  // USB0
     IntDefaultHandler,                      // PWM Generator 3
     IntDefaultHandler,                      // uDMA Software Transfer
     IntDefaultHandler,                      // uDMA Error

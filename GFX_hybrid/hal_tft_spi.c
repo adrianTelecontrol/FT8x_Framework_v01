@@ -22,7 +22,7 @@
 #include <inc/hw_types.h>
 
 #include "graphics_engine.h"
-#include "hal_spi.h"
+#include "hal_tft_spi.h"
 #include <helpers.h>
 
 
@@ -61,7 +61,7 @@ void SSI3IntHandler(void) {
       ;
 
     // CRITICAL: Close the EVE SPI transaction!
-    HAL_SPI_CS_Disable();
+    HAL_TFT_SPI_CS_Disable();
 
     // Clean up DMA and disable this interrupt until the next frame
     MAP_SSIDMADisable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
@@ -78,9 +78,9 @@ void SSI3IntHandler(void) {
   }
 }*/
 
-bool HAL_SPI_IsBusy(void) { return g_bSPI_TransferActive; }
+bool HAL_TFT_SPI_IsBusy(void) { return g_bSPI_TransferActive; }
 
-uint8_t HAL_SPI_ReadWrite8(uint16_t txData) {
+uint8_t HAL_TFT_SPI_ReadWrite8(uint16_t txData) {
   uint32_t ui32RxData;
   SSIDataPut(SSI3_BASE, txData);
 
@@ -97,7 +97,7 @@ uint8_t HAL_SPI_ReadWrite8(uint16_t txData) {
 static uint32_t g_dummyRxByte; 
 // static uint32_t g_dummyTxZero = 0;
 
-bool HAL_SPI_uDMATransfer(const uint8_t *pTxBuffer, uint8_t *pRxBuffer,
+bool HAL_TFT_SPI_uDMATransfer(const uint8_t *pTxBuffer, uint8_t *pRxBuffer,
                           uint32_t count, bool bIsBlocking) {
   // Límite de hardware del uDMA en modo básico
   if (count == 0 || count > 1024) {
@@ -231,7 +231,7 @@ void SPI3_Init(void) {
 
   // Configurar SSI en modo Single (se cambiará a Quad más adelante mediante software)
   MAP_SSIConfigSetExpClk(SSI3_BASE, g_ui32SysClock, SSI_FRF_MOTO_MODE_0,
-                         SSI_MODE_MASTER, HAL_SPI_LOW_BITRATE, 8);
+                         SSI_MODE_MASTER, HAL_TFT_SPI_LOW_BITRATE, 8);
 
   MAP_SSIDMAEnable(SSI3_BASE, SSI_DMA_TX | SSI_DMA_RX);
 
@@ -240,7 +240,7 @@ void SPI3_Init(void) {
   MAP_SSIEnable(SSI3_BASE);
 }
 
-void HAL_SPI_SwitchTo_Quad(void) {
+void HAL_TFT_SPI_SwitchTo_Quad(void) {
     // 1. Ensure the last single-mode transaction is fully complete
     while (MAP_SSIBusy(SSI3_BASE));
     SysCtlDelay(3); // Guard: shift register fully done
@@ -255,12 +255,12 @@ void HAL_SPI_SwitchTo_Quad(void) {
     MAP_SSIEnable(SSI3_BASE);
 
     // 4. Bus starts in TX direction (QUAD_WRITE)
-    HAL_SPI_TX();
+    HAL_TFT_SPI_TX();
 
     g_bIsQuadActive = true;
 }
 
-void HAL_SPI_SetHighSpeed(void) {
+void HAL_TFT_SPI_SetHighSpeed(void) {
     // Ensure bus is idle before touching the peripheral
     while (MAP_SSIBusy(SSI3_BASE));
     SysCtlDelay(3);
@@ -272,7 +272,7 @@ void HAL_SPI_SetHighSpeed(void) {
 
     // Reconfigure clock speed — this resets control registers
     SSIConfigSetExpClk(SSI3_BASE, g_ui32SysClock, SSI_FRF_MOTO_MODE_0,
-                       SSI_MODE_MASTER, HAL_SPI_HIGH_BITRATE, 8);
+                       SSI_MODE_MASTER, HAL_TFT_SPI_HIGH_BITRATE, 8);
 
     // Re-apply Quad mode if it was active, since SSIConfigSetExpClk wiped it
     if (g_bIsQuadActive) {
@@ -283,23 +283,23 @@ void HAL_SPI_SetHighSpeed(void) {
 
     // Ensure buffer direction is correct after the reconfiguration
     if (g_bIsQuadActive) {
-        HAL_SPI_TX();
+        HAL_TFT_SPI_TX();
     } else {
-        HAL_SPI_SingleMode();
+        HAL_TFT_SPI_SingleMode();
     }
 }
 
-void HAL_SPI_Init(void) {
-  GPIOPinTypeGPIOOutput(GPIO_PORTM_BASE, HAL_SPI_PD);
-  GPIOPinTypeGPIOOutput(GPIO_PORTQ_BASE, HAL_SPI_CS);
-  GPIOPinTypeGPIOOutput(GPIO_PORTN_BASE, HAL_SPI_LED);
-  GPIOPinTypeGPIOOutput(GPIO_PORTK_BASE, HAL_SPI_DIR1);
-  GPIOPinTypeGPIOOutput(GPIO_PORTK_BASE, HAL_SPI_DIR2);
-  GPIOPadConfigSet(GPIO_PORTQ_BASE, HAL_SPI_CS, GPIO_STRENGTH_4MA,
+void HAL_TFT_SPI_Init(void) {
+  GPIOPinTypeGPIOOutput(GPIO_PORTM_BASE, HAL_TFT_SPI_PD);
+  GPIOPinTypeGPIOOutput(GPIO_PORTQ_BASE, HAL_TFT_SPI_CS);
+  GPIOPinTypeGPIOOutput(GPIO_PORTN_BASE, HAL_TFT_SPI_LED);
+  GPIOPinTypeGPIOOutput(GPIO_PORTK_BASE, HAL_TFT_SPI_DIR1);
+  GPIOPinTypeGPIOOutput(GPIO_PORTK_BASE, HAL_TFT_SPI_DIR2);
+  GPIOPadConfigSet(GPIO_PORTQ_BASE, HAL_TFT_SPI_CS, GPIO_STRENGTH_4MA,
                    GPIO_PIN_TYPE_STD);
   
-  GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR1, HAL_GPIO_HIGH);
-  GPIOPinWrite(GPIO_PORTK_BASE, HAL_SPI_DIR2, HAL_GPIO_LOW);
+  GPIOPinWrite(GPIO_PORTK_BASE, HAL_TFT_SPI_DIR1, HAL_GPIO_HIGH);
+  GPIOPinWrite(GPIO_PORTK_BASE, HAL_TFT_SPI_DIR2, HAL_GPIO_LOW);
 
   uDMA_Init();
   SPI3_Init();
