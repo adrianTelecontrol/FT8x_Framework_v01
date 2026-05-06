@@ -48,10 +48,10 @@ static const char TAG[] = "commonWidgets";
 // Callbacks (Botones)
 // ==========================================
 static void onInicioBtnReleased(gfx_Button *btn) {
-	btnConfigData.style = STYLE_SECONDARY;
+	btnConfigData.style = STYLE_DEFAULT;
 	btnConfigData.state = BTN_STATE_NORMAL;
 	btnConfigData.bIsDirty = true;
-	btnGraphData.style = STYLE_SECONDARY;
+	btnGraphData.style = STYLE_DEFAULT;
 	btnGraphData.state = BTN_STATE_NORMAL;
 	btnGraphData.bIsDirty = true;
 
@@ -62,10 +62,10 @@ static void onInicioBtnReleased(gfx_Button *btn) {
 }
 
 static void onConfigBtnReleased(gfx_Button *btn) {
-	btnInicioData.style = STYLE_SECONDARY;
+	btnInicioData.style = STYLE_DEFAULT;
 	btnInicioData.state = BTN_STATE_NORMAL;
 	btnInicioData.bIsDirty = true;
-	btnGraphData.style = STYLE_SECONDARY;
+	btnGraphData.style = STYLE_DEFAULT;
 	btnGraphData.state = BTN_STATE_NORMAL;
 	btnGraphData.bIsDirty = true;
 	
@@ -76,10 +76,10 @@ static void onConfigBtnReleased(gfx_Button *btn) {
 }
 
 static void onGraphBtnReleased(gfx_Button *btn) {
-	btnConfigData.style = STYLE_SECONDARY;
+	btnConfigData.style = STYLE_DEFAULT;
 	btnConfigData.state = BTN_STATE_NORMAL;
 	btnConfigData.bIsDirty = true;
-	btnInicioData.style = STYLE_SECONDARY;
+	btnInicioData.style = STYLE_DEFAULT;
 	btnInicioData.state = BTN_STATE_NORMAL;
 	btnInicioData.bIsDirty = true;
 
@@ -168,7 +168,7 @@ void initCommonWidgets(void) {
     btnConfigData = (gfx_Button){
         .name = "btnCfg", .label = "Config", .size.width = btnWidth, .size.height = btnHeight,
         .pos.x = btnWidth + 10, .pos.y = btnY, .oldPos.x = 310, .oldPos.y = btnY,
-        .typo = TYPO_H2, .style = STYLE_SECONDARY, .borderWidth = 0, .radius = 5,
+        .typo = TYPO_H2, .style = STYLE_DEFAULT, .borderWidth = 0, .radius = 5,
         .state = BTN_STATE_NORMAL, .onPressed = onGenericBtnPressed, .onRelease = onConfigBtnReleased
     };
     btnConfigWidget.eWidgetType = WD_TYPE_BUTTON; btnConfigWidget.pvWidget = (void *)&btnConfigData;
@@ -177,7 +177,7 @@ void initCommonWidgets(void) {
     btnGraphData = (gfx_Button){
         .name = "btnGraph", .label = "Graph", .size.width = btnWidth, .size.height = btnHeight,
         .pos.x = btnWidth * 2 + 15, .pos.y = btnY, .oldPos.x = 555, .oldPos.y = btnY,
-        .typo = TYPO_H2, .style = STYLE_SECONDARY, .borderWidth = 0, .radius = 5,
+        .typo = TYPO_H2, .style = STYLE_DEFAULT, .borderWidth = 0, .radius = 5,
         .state = BTN_STATE_NORMAL, .onPressed = onGenericBtnPressed, .onRelease = onGraphBtnReleased
     };
     btnGraphWidget.eWidgetType = WD_TYPE_BUTTON; btnGraphWidget.pvWidget = (void *)&btnGraphData;
@@ -190,7 +190,7 @@ void initCommonWidgets(void) {
 		.scale = 1,
 	};
 
-	if(!FM_LoadEVEImage(DRIVE_SD, "logo_tc.png", &tcLogoImgData, EVE_FREE_RAMG_START)) {
+	if(!FM_LoadEVEImage(DRIVE_SD_ID, "logo_tc.png", &tcLogoImgData, EVE_FREE_RAMG_START)) {
 		TIVA_LOGE(TAG, "Fallo al cargar logo_tc.png en EVE");
 	}
 

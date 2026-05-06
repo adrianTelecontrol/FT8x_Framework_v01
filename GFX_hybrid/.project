@@ -38,7 +38,7 @@
 		<link>
 			<name>third_party/port</name>
 			<type>2</type>
-			<locationURI>virtual:/virtual</locationURI>
+			<locationURI>virtual</locationURI>
 		</link>
 		<link>
 			<name>third_party/src</name>
@@ -69,6 +69,11 @@
 			<name>third_party/src/option/cc932.c</name>
 			<type>1</type>
 			<locationURI>COM_TI_TM4C_INSTALL_DIR/third_party/fatfs/src/option/cc932.c</locationURI>
+		</link>
+		<link>
+			<name>third_party/src/option/unicode.c</name>
+			<type>1</type>
+			<locationURI>SW_ROOT/third_party/fatfs/src/option/unicode.c</locationURI>
 		</link>
 	</linkedResources>
 	<variableList>

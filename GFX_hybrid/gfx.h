@@ -9,13 +9,8 @@
 #include "graphics_engine.h"
 #include "gfx_theme.h"
 
-#define MAX_CANVAS_WIDGETS 20
+#define MAX_CANVAS_WIDGETS 	20
 #define MAX_GRAPH_DATA_SETS 5
-
-// Darkens any RGB565 color by 50% safely and instantly
-#define DARKEN_COLOR(c) (((c) & 0xF7DE) >> 1)
-
-#define LIGHTEN_COLOR(c) ((c) - (((c) & 0xE79C) >> 2) + 0x39E7)
 
 typedef enum {
 	STYLE_DEFAULT = 0,
@@ -29,15 +24,17 @@ typedef enum {
 } gfx_WidgetStyle_e;
 
 typedef enum {
-  WD_TYPE_NULL = 0,
-  WD_TYPE_RECT,
-  WD_TYPE_BUTTON,
-  WD_TYPE_LABEL,
-  WD_TYPE_SLIDER,
-  WD_TYPE_GRAPH,
-  WD_TYPE_MULTIGRAPH,
-  WD_TYPE_IMAGE,
-  WD_TYPE_GRAPH_OVERLAY,
+  	WD_TYPE_NULL = 0,
+  	WD_TYPE_RECT,
+  	WD_TYPE_BUTTON,
+  	WD_TYPE_LABEL,
+  	WD_TYPE_SLIDER,
+  	WD_TYPE_GRAPH,
+  	WD_TYPE_MULTIGRAPH,
+  	WD_TYPE_IMAGE,
+  	WD_TYPE_GRAPH_OVERLAY,
+  	WD_TYPE_GRAPH_CURSOR,
+  	WD_TYPE_OVERLAY_TRACE,
 } widget_type_e;
 
 typedef struct RegionTouchObject {
@@ -63,7 +60,6 @@ typedef struct Position {
   int16_t y;
 } Position;
 
-// En gfx.h
 typedef struct {
     int16_t x;
     int16_t y;
@@ -72,7 +68,6 @@ typedef struct {
     bool isDirty;
 } gfx_DirtyRect;
 
-/************************  Widgets struct ***********************/
 typedef struct Point {
   Position pos;
   uint16_t ratio;
@@ -191,6 +186,8 @@ typedef struct Graph {
     char *name;
     bool bIsDirty;
 	bool bEVEDirty;
+	bool isTraceVisible;
+	uint32_t totalPointsAdded;
 } gfx_Graph;
 
 typedef struct {
@@ -222,19 +219,22 @@ typedef struct {
     char *name;
     bool bIsDirty;       
 	bool bEVEDirty;
+	uint32_t totalPointsAdded[MAX_GRAPH_DATA_SETS];
 } gfx_MultiGraph;
 
 #define MAX_OVERLAY_TRACES 4
 
 typedef struct {
     uint16_t color;          // El color de la línea de la gráfica que representa
-    char valueText[24];      // El valor formateado (ej. "12.5 V")
+    char valueText[34];      // El valor formateado (ej. "12.5 V")
+	bool enableTrace;
     bool isVisible;          // Por si quieres apagar temporalmente una lectura
 } gfx_TraceOverlayData;
 
-typedef struct {
+typedef struct GraphOverlay{
     Position pos;
     Size size;               // Tamaño fijo o calculado del recuadro
+	RegionTouchObject regTouch;
     
     gfx_TraceOverlayData traces[MAX_OVERLAY_TRACES];
     uint8_t numTraces;       // Cuántas trazas están activas (1 para Graph, >1 para MultiGraph)
@@ -242,10 +242,37 @@ typedef struct {
     uint16_t bgColor;        // Color del recuadro flotante
     uint16_t textColor;
     gfx_TypoStyle_e typo;
-    
+	
+	bool isTraceVisible;
+	void (*onTraceToggle)(struct GraphOverlay *, int);
+	
     char *name;
     bool bIsDirty;
 } gfx_GraphOverlay;
+
+typedef enum {
+    CURSOR_VERTICAL,
+    CURSOR_HORIZONTAL,
+    CURSOR_CROSSHAIR
+} gfx_CursorType;
+
+typedef struct {
+    const char *name;      // Identificador del widget
+    Position pos;          // Aunque no la uses para renderizar, el motor podría exigirla
+    Size size;             // Igual que la posición
+    bool bIsDirty;         // Flag para refresco de pantalla
+	RegionTouchObject regTouch;
+    // -----------------------------------------------------
+
+    const gfx_Graph *parent;
+    gfx_CursorType type;
+    int16_t relX;
+    int16_t relY;
+    uint8_t lineWidth;
+    uint16_t color;
+    uint8_t alpha;
+    bool isVisible;
+} gfx_GraphCursor;
 
 typedef struct {
     char *name;
@@ -296,6 +323,8 @@ void gfx_clear(void);
 
 void gfx_calibrate(void);
 
+bool gfx_getWidgetBounds(gfx_GenericWidget *widget, int16_t *x, int16_t *y,
+                         int16_t *w, int16_t *h);
 //
 // ************ PrimitiveFuncitons ************************
 //
@@ -388,5 +417,11 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
                                int16_t dirtyW, int16_t dirtyH);
 
 void gfx_drawGraphOverlay(pixel16_t *pBuf, gfx_GraphOverlay *ovl);
+
+void gfx_GraphCursorRenderEVE(gfx_GraphCursor *cursor);
+
+int16_t gfx_GraphCursorGetValue(gfx_GraphCursor *cursor);
+
+bool gfx_processCursorTouch(gfx_GraphCursor *cursor, TouchStatus touch);
 
 #endif // GFX_H

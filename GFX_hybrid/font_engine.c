@@ -323,7 +323,7 @@ int8_t gfx_fontLoadDynamic(gfx_FontFamily_e family, gfx_FontWeight_e weight,
   //TIVA_LOGI(TASK_NAME, "Attempting to load: %s", filePath);
 
   // 4. Load from SD SPI
-  if (FM_FetchBDF(DRIVE_SD, filePath, &g_FontCache[freeSlot].bdfData, 32, 126)) {
+  if (FM_FetchBDF(DRIVE_SD_ID, filePath, &g_FontCache[freeSlot].bdfData, 32, 126)) {
     g_FontCache[freeSlot].family = family;
     g_FontCache[freeSlot].weight = weight;
     g_FontCache[freeSlot].size = size;

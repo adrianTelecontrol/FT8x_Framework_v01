@@ -4,10 +4,14 @@
 
 typedef struct tm RTC_timeDate;
 
+bool RTC_getFileFormattedDate(char *out_buffer, size_t max_len);
 bool RTC_getFormattedDate(char *out_buffer, size_t max_len);
 
 bool RTC_getFormattedTime(char *out_buffer, size_t max_len);
+bool RTC_getFileFormattedTime(char *out_buffer, size_t max_len);
 
 void initRTCModule(void);
 
 #endif // RTC_MODULE_H_
+
+

@@ -1,7 +1,4 @@
 
-
-#define ENABLE_LFN
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -161,7 +158,7 @@ int main(void) {
   Theme_SetModeHigh(true);
   // Play fullscreen with no-tear and audio
   EVE_VideoResult_t eResult = EVE_Video_Play(
-	  DRIVE_SD,
+	  DRIVE_SD_ID,
       "s_hd2.avi",
       OPT_FULLSCREEN | OPT_NOTEAR | OPT_MEDIAFIFO
   );

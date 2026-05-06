@@ -65,7 +65,7 @@ uint16_t blendRGB565(uint16_t colorTop, uint16_t colorBottom, int16_t currentY, 
 bool gfx_initRegTouch(void *widget, widget_type_e type) {
   if (type == WD_TYPE_BUTTON) {
     gfx_Button *wd = (gfx_Button *)widget;
-	wd->regTouch.x1 = wd->pos.x;
+    wd->regTouch.x1 = wd->pos.x;
     wd->regTouch.x2 = wd->pos.x + wd->size.width;
     wd->regTouch.y1 = wd->pos.y;
     wd->regTouch.y2 = wd->pos.y + wd->size.height;
@@ -76,8 +76,22 @@ bool gfx_initRegTouch(void *widget, widget_type_e type) {
     wd->regTouch.x2 = wd->pos.x + wd->size.width;
     wd->regTouch.y1 = wd->pos.y - wd->knobRadius;
     wd->regTouch.y2 = wd->pos.y + wd->size.height + wd->knobRadius;
-  }
+  } else if(type == WD_TYPE_GRAPH_CURSOR) {
+    gfx_GraphCursor *cursor = (gfx_GraphCursor *)widget;
 
+    cursor->regTouch.x1 = cursor->parent->pos.x + cursor->relX - 35;
+    cursor->regTouch.x2 = cursor->parent->pos.x + cursor->relX + 35;
+    cursor->regTouch.y1 = cursor->parent->pos.y + cursor->relY;
+    cursor->regTouch.y2 = cursor->parent->pos.y + cursor->relX + cursor->parent->size.height;
+    
+  } else if (type == WD_TYPE_GRAPH_OVERLAY) {
+    gfx_GraphOverlay *ovl = (gfx_GraphOverlay *)widget;
+	
+	ovl->regTouch.x1 = ovl->pos.x;
+	ovl->regTouch.x2 = ovl->pos.x + ovl->size.width;
+	ovl->regTouch.y1 = ovl->pos.y;
+	ovl->regTouch.y2 = ovl->pos.y + ovl->size.height;
+  } 
   return true;
 }
 
@@ -202,6 +216,12 @@ bool gfx_isWidgetTouched(gfx_GenericWidget *wd, TouchStatus touch) {
   case WD_TYPE_SLIDER:
     ret = gfx_touchObject(((gfx_Slider *)wd->pvWidget)->regTouch, touch);
     break;
+  case WD_TYPE_GRAPH_CURSOR:
+    ret = gfx_touchObject(((gfx_GraphCursor *)wd->pvWidget)->regTouch, touch);
+	break;
+  case WD_TYPE_GRAPH_OVERLAY:
+	ret = gfx_touchObject(((gfx_GraphOverlay *)wd->pvWidget)->regTouch, touch);
+	break;
   default:
     break;
   }
@@ -762,6 +782,12 @@ void gfx_drawButton(pixel16_t *pBuf, gfx_Button *btn) {
         case STYLE_PRIMARY:
             baseBgColor = g_pCurrentTheme->palette.primary;
             break;
+        case STYLE_SECONDARY:
+            baseBgColor = g_pCurrentTheme->palette.secondary;
+            break;
+        case STYLE_SUCCESS:
+            baseBgColor = g_pCurrentTheme->palette.success;
+            break;
         case STYLE_DANGER:
             baseBgColor = g_pCurrentTheme->palette.danger;
             break;
@@ -1054,6 +1080,26 @@ bool gfx_processSliderTouch(gfx_Slider *sl, TouchStatus touch) {
     return false;
 }
 
+bool gfx_processCursorTouch(gfx_GraphCursor *cursor, TouchStatus touch) {
+	if(gfx_touchObject(cursor->regTouch, touch)) {
+		// Clamp the values
+		uint16_t posX = 0;
+		// if(touch.x > cursor->parent->pos.x + cursor->parent->size.width) 
+		// 	cursor->relX = cursor->parent->pos.x + cursor->parent->size.width;
+		// else if(touch.x < cursor->parent->pos.x)
+		// 	cursor->relX = cursor->parent->pos.x;
+		// else 
+		//  	cursor->relX = touch.x - cursor->parent->pos.x;
+
+		cursor->relX = touch.x;
+
+		gfx_initRegTouch((void *)cursor, WD_TYPE_GRAPH_CURSOR);
+		return true;
+	}
+
+	return false;
+}
+
 void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph) {
     if (!pBuf || !graph) return;
 
@@ -1249,16 +1295,17 @@ void gfx_GraphAddPoint(gfx_Graph *graph, int16_t newValue) {
 
     // Sobrescribimos el dato más viejo en la posición 'head'
     graph->data[graph->head] = newValue;
-
     // Avanzamos el 'head' circularmente
     graph->head = (graph->head + 1) % graph->maxPoints;
+
+	graph->totalPointsAdded++;
 
 	//UpdateDisplayWithGraphOverlay(graph);
     // Le avisamos al motor que debe redibujar la gráfica en el próximo frame
     //graph->bIsDirty = true;
 	graph->bEVEDirty = true;
 }
-
+/*
 void gfx_GraphRenderEVEComponents(gfx_Graph *graph) {
   if (graph != NULL && graph->data != NULL && graph->maxPoints > 1) {
       int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
@@ -1280,7 +1327,8 @@ void gfx_GraphRenderEVEComponents(gfx_Graph *graph) {
           if (val < graph->minY) val = graph->minY;
           if (val > graph->maxY) val = graph->maxY;
 
-          uint16_t reverse_i = (graph->maxPoints - 1) - i;
+          // uint16_t reverse_i = (graph->maxPoints - 1) - i;
+          uint16_t reverse_i = i;
           int16_t px = (int16_t)((int32_t)graph->pos.x + ((int32_t)reverse_i * (graph->size.width - 1)) / (graph->maxPoints - 1));
           int16_t py = (int16_t)((int32_t)graph->pos.y + (graph->size.height - 1) - (((int32_t)(val - graph->minY) * (graph->size.height - 1)) / rangeY));
 
@@ -1290,6 +1338,69 @@ void gfx_GraphRenderEVEComponents(gfx_Graph *graph) {
       API_END(); 
       // Vaciamos el FIFO de comandos (RAM_CMD) hacia la RAM_DL 
   }
+} */
+
+void gfx_GraphRenderEVEComponents(gfx_Graph *graph) {
+    if (graph != NULL && graph->data != NULL && graph->maxPoints > 1 && graph->isTraceVisible) {
+        // 1. Calculate how many points we actually have to draw right now
+        uint16_t pointsToDraw = (graph->totalPointsAdded < graph->maxPoints) ? 
+                                 graph->totalPointsAdded : graph->maxPoints;
+
+        // If we don't have at least 2 points, we can't draw a line strip
+        if (pointsToDraw < 2) return;
+
+        int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
+        if (rangeY <= 0) rangeY = 1;
+
+        API_BEGIN(LINE_STRIP); 
+        API_LINE_WIDTH(graph->lineWidth * 16 / 2); 
+        
+        uint16_t c = graph->lineColor;
+        API_COLOR_RGB((uint8_t)((c >> 8) & 0xF8), (uint8_t)((c >> 3) & 0xFC), (uint8_t)((c << 3) & 0xF8));
+
+        // 2. Iterate only over the points we actually have
+        uint16_t i = 0;
+        for (; i < pointsToDraw; i++) {
+            
+            uint16_t dataIdx;
+            int16_t px;
+
+            // --- PHASE 1: FILLING ---
+            if (graph->totalPointsAdded < graph->maxPoints) {
+                // Read straight from index 0 to totalPointsAdded
+                dataIdx = i; 
+                
+                // Map 'i' proportionally across the screen. 
+                // Since pointsToDraw is less than maxPoints, it will draw from left, 
+                // moving rightward, leaving empty space on the right.
+                // Notice we divide by (maxPoints - 1) to keep the physical spacing consistent.
+                px = (int16_t)((int32_t)graph->pos.x + ((int32_t)i * (graph->size.width - 1)) / (graph->maxPoints - 1));
+            } 
+            
+            // --- PHASE 2: SCROLLING ---
+            else {
+                // Calculate the oldest point in the ring buffer
+                dataIdx = (graph->head + i) % graph->maxPoints;
+                
+                // i = 0 -> Far Left (Oldest)
+                // i = maxPoints - 1 -> Far Right (Newest)
+                px = (int16_t)((int32_t)graph->pos.x + ((int32_t)i * (graph->size.width - 1)) / (graph->maxPoints - 1));
+            }
+
+            int16_t val = graph->data[dataIdx];
+
+            // Saturate limits
+            if (val < graph->minY) val = graph->minY;
+            if (val > graph->maxY) val = graph->maxY;
+
+            // Calculate Y (Top-Down)
+            int16_t py = (int16_t)((int32_t)graph->pos.y + (graph->size.height - 1) - (((int32_t)(val - graph->minY) * (graph->size.height - 1)) / rangeY));
+
+            API_VERTEX2F(px * 16, py * 16);
+        }
+        
+        API_END(); 
+    }
 }
 
 void gfx_MultiGraphAddData(gfx_MultiGraph *graph, uint8_t traceIndex, int16_t newValue) {
@@ -1305,6 +1416,8 @@ void gfx_MultiGraphAddData(gfx_MultiGraph *graph, uint8_t traceIndex, int16_t ne
 
     // 3. Avanzamos ÚNICAMENTE la cabecera de este trazo
     graph->heads[traceIndex] = (currentHead + 1) % graph->maxPoints;
+
+	graph->totalPointsAdded[traceIndex]++;
 
 	graph->bEVEDirty = true;
 }
@@ -1369,7 +1482,7 @@ void gfx_drawMultiGraph(pixel16_t *pBuf, gfx_MultiGraph *graph) {
 
     graph->bIsDirty = false;
 }
-
+/*
 void gfx_MultigraphRenderEVEComponents(gfx_MultiGraph *graph) {
 
     if (graph != NULL && graph->activeTraces > 0 && graph->maxPoints > 1) {
@@ -1409,7 +1522,8 @@ void gfx_MultigraphRenderEVEComponents(gfx_MultiGraph *graph) {
                     if (val < graph->minY) val = graph->minY;
                     if (val > graph->maxY) val = graph->maxY;
 
-                    uint16_t reverse_i = (renderPoints - 1) - i;
+                    // uint16_t reverse_i = (renderPoints - 1) - i;
+                    uint16_t reverse_i = i;
                     int16_t px = (int16_t)((int32_t)graph->pos.x + ((int32_t)reverse_i * (graph->size.width - 1)) / (renderPoints - 1));
                     int16_t py = (int16_t)((int32_t)graph->pos.y + (graph->size.height - 1) - (((int32_t)(val - graph->minY) * (graph->size.height - 1)) / rangeY));
 
@@ -1431,6 +1545,171 @@ void gfx_MultigraphRenderEVEComponents(gfx_MultiGraph *graph) {
             }
         }
     }
+} */
+
+void gfx_MultigraphRenderEVEComponents(gfx_MultiGraph *graph) {
+
+    if (graph != NULL && graph->activeTraces > 0 && graph->maxPoints > 1) {
+        int32_t rangeY = (int32_t)graph->maxY - (int32_t)graph->minY;
+        if (rangeY <= 0) rangeY = 1;
+
+        uint8_t trace = 0;
+        for (; trace < graph->activeTraces; trace++) {
+            
+            // Ignorar si no hay datos
+            if (graph->dataSets[trace] == NULL) continue;
+
+            // 1. Calcular cuántos puntos tiene *esta* traza actualmente
+            uint32_t totalPts = graph->totalPointsAdded[trace];
+            uint16_t availablePts = (totalPts < graph->maxPoints) ? totalPts : graph->maxPoints;
+
+            // Si no hay al menos 2 puntos, no se puede trazar una línea
+            if (availablePts < 2) continue;
+
+            // 2. Downsampling dinámico: Nunca dibujar más puntos que el ancho en píxeles
+            uint16_t renderPts = availablePts; 
+            if (renderPts > graph->size.width) {
+                renderPts = graph->size.width;
+            }
+
+            API_BEGIN(LINE_STRIP); 
+            API_LINE_WIDTH(graph->lineWidth * 16 / 2); 
+            
+            uint16_t c = graph->lineColors[trace];
+            API_COLOR_RGB((uint8_t)((c >> 8) & 0xF8), (uint8_t)((c >> 3) & 0xFC), (uint8_t)((c << 3) & 0xF8));
+            
+            uint16_t currentTraceHead = graph->heads[trace];
+            uint16_t i = 0;
+            
+            for (; i < renderPts; i++) {
+                
+                // dataOffset interpola 'i' para abarcar todos los puntos disponibles
+                uint16_t dataOffset = (i * (availablePts - 1)) / (renderPts - 1);
+                
+                uint16_t dataIdx;
+                int16_t px;
+
+                // ==========================================
+                // FASE 1: LLENADO (Sweep)
+                // ==========================================
+                if (totalPts < graph->maxPoints) {
+                    // Leemos linealmente desde el índice 0
+                    dataIdx = dataOffset; 
+                    
+                    // La posición X escala con maxPoints para que la señal crezca de izq a der
+                    px = (int16_t)((int32_t)graph->pos.x + ((int32_t)dataOffset * (graph->size.width - 1)) / (graph->maxPoints - 1));
+                } 
+                // ==========================================
+                // FASE 2: DESPLAZAMIENTO (Scroll)
+                // ==========================================
+                else {
+                    // Leemos usando el buffer circular, partiendo del dato más viejo (Head)
+                    dataIdx = (currentTraceHead + dataOffset) % graph->maxPoints;
+                    
+                    // La posición X ocupa todo el ancho disponible
+                    px = (int16_t)((int32_t)graph->pos.x + ((int32_t)i * (graph->size.width - 1)) / (renderPts - 1));
+                }
+
+                int16_t val = graph->dataSets[trace][dataIdx];
+
+                if (val < graph->minY) val = graph->minY;
+                if (val > graph->maxY) val = graph->maxY;
+
+                int16_t py = (int16_t)((int32_t)graph->pos.y + (graph->size.height - 1) - (((int32_t)(val - graph->minY) * (graph->size.height - 1)) / rangeY));
+
+                API_VERTEX2F(px * 16, py * 16);
+            }
+            
+            API_END(); // Fin de la traza actual
+
+            // =======================================================
+            // THE SPI BURST FIX (Pausa entre trazas)
+            // =======================================================
+            if (trace < (graph->activeTraces - 1)) {
+                API_LIB_EndCoProList(); 
+                API_LIB_AwaitCoProEmpty();
+                API_LIB_BeginCoProList();
+            }
+        }
+    }
+}
+
+void gfx_GraphCursorRenderEVE(gfx_GraphCursor *cursor) {
+    if (cursor == NULL || !cursor->isVisible || cursor->parent == NULL) {
+        return;
+    }
+
+    // 1. Configuramos el estilo de la línea
+    API_BEGIN(LINES);
+    API_LINE_WIDTH(cursor->lineWidth * 16 / 2); // EVE requiere subpíxeles
+    
+    // Convertir color (asumiendo RGB565)
+    uint16_t c = cursor->color;
+    API_COLOR_RGB((uint8_t)((c >> 8) & 0xF8), (uint8_t)((c >> 3) & 0xFC), (uint8_t)((c << 3) & 0xF8));
+    
+    // Aplicar transparencia (Ej: 150 = semi-transparente)
+    API_COLOR_A(cursor->alpha); 
+
+    const gfx_Graph *g = cursor->parent;
+
+    // ==========================================
+    // CURSOR VERTICAL (Mide tiempo / Eje X)
+    // ==========================================
+    if (cursor->type == CURSOR_VERTICAL || cursor->type == CURSOR_CROSSHAIR) {
+        // Saturación: Evitar que el cursor se salga de la gráfica
+        int16_t drawX = cursor->relX;
+        if (drawX < 0) drawX = 0;
+        if (drawX > g->size.width) drawX = g->size.width;
+
+        int16_t absX = g->pos.x + drawX;
+
+        API_VERTEX2F(absX * 16, g->pos.y * 16);                               // Punto superior
+        API_VERTEX2F(absX * 16, (g->pos.y + g->size.height) * 16);            // Punto inferior
+    }
+
+    // ==========================================
+    // CURSOR HORIZONTAL (Mide voltaje / Eje Y)
+    // ==========================================
+    if (cursor->type == CURSOR_HORIZONTAL || cursor->type == CURSOR_CROSSHAIR) {
+        // Saturación
+        int16_t drawY = cursor->relY;
+        if (drawY < 0) drawY = 0;
+        if (drawY > g->size.height) drawY = g->size.height;
+
+        int16_t absY = g->pos.y + drawY;
+
+        API_VERTEX2F(g->pos.x * 16, absY * 16);                               // Punto izquierdo
+        API_VERTEX2F((g->pos.x + g->size.width) * 16, absY * 16);             // Punto derecho
+    }
+
+    API_END();
+    
+    // Restaurar el canal alfa a 255 (sólido) para que no afecte a los widgets que se dibujen después
+    API_COLOR_A(255); 
+}
+
+int16_t gfx_GraphCursorGetValue(gfx_GraphCursor *cursor) {
+    if (cursor == NULL || cursor->parent == NULL || cursor->parent->maxPoints < 2) return 0;
+    
+    const gfx_Graph *g = cursor->parent;
+    
+    // 1. Mapear la posición del pixel (relX) al índice del arreglo [0 a maxPoints-1]
+    uint16_t pointIndex = (cursor->relX * (g->maxPoints - 1)) / g->size.width;
+
+    uint16_t dataIdx;
+
+    // 2. Aplicar la lógica inversa de Sweep/Scroll que diseñaste
+    if (g->totalPointsAdded < g->maxPoints) {
+        // Fase de Llenado: El índice es directo
+        dataIdx = pointIndex;
+        // Si el cursor está en un área vacía (a la derecha de los datos), devolver 0 o el último dato
+        if (dataIdx >= g->totalPointsAdded) return 0; 
+    } else {
+        // Fase de Desplazamiento: El índice considera el buffer circular
+        dataIdx = (g->head + pointIndex) % g->maxPoints;
+    }
+
+    return g->data[dataIdx];
 }
 
 void gfx_ImageRenderEVEComponents(gfx_Image *img) {
@@ -1724,6 +2003,7 @@ bool gfx_compositePartialFrame(gfx_Canvas *srf, pixel16_t *psPixelBuffer,
     return true;
 }
 
+/*
 void gfx_drawGraphOverlay(pixel16_t *pBuf, gfx_GraphOverlay *ovl) {
     if (!pBuf || !ovl) return;
 
@@ -1763,4 +2043,99 @@ void gfx_drawGraphOverlay(pixel16_t *pBuf, gfx_GraphOverlay *ovl) {
         gfx_DrawString(pBuf, fontId, textX, textY, 
                        ovl->traces[i].valueText, ovl->textColor, ALIGN_VCENTER, 1);
     }
+} */
+
+void gfx_drawGraphOverlay(pixel16_t *pBuf, gfx_GraphOverlay *ovl) {
+    if (!pBuf || !ovl) return;
+
+    // 1. Dibujar el fondo del panel flotante
+    gfx_fillRoundRect(pBuf, ovl->pos.x, ovl->pos.y, 
+                      ovl->size.width, ovl->size.height, 5, ovl->bgColor);
+
+    // 2. Resolver la fuente y obtener la altura para espaciar los elementos
+    int8_t fontId = Theme_ResolveFontId(ovl->typo);
+    uint16_t textW = 0, textH = 0;
+    
+    if (fontId >= 0) {
+        gfx_GetStringDimensions("0", fontId, &textW, &textH, 1); 
+    }
+
+    // 3. Iterar sobre las trazas activas y dibujarlas
+    int16_t startY = ovl->pos.y + 10; // Margen superior
+    int16_t startX = ovl->pos.x + 10; // Margen izquierdo
+    uint16_t colorRectSize = textH * 0.8f; 
+
+    int i = 0;
+    for (; i < ovl->numTraces; i++) {
+        // ¡ELIMINADO!: if (!ovl->traces[i].isVisible) continue;
+        // Ahora SIEMPRE evaluamos la fila para poder ver el contorno y el texto
+
+        int16_t currentY = startY + (i * (textH + 8)); 
+
+        // A. Dibujar el cuadrito de color indicador
+        if (ovl->traces[i].isVisible) {
+            // Relleno cuando la traza ESTÁ visible
+            gfx_fillRoundRect(pBuf, startX, currentY, 
+                              colorRectSize, colorRectSize, 2, ovl->traces[i].color);
+        } else {
+            // Solo el contorno cuando la traza está OCULTA
+            // (Si no tienes gfx_drawRoundRect, usa gfx_drawRect estándar)
+            gfx_drawRoundRect(pBuf, startX, currentY, 
+                              colorRectSize, colorRectSize, 2, ovl->traces[i].color);
+        }
+
+        // B. Dibujar el texto del valor (se dibuja siempre)
+        int16_t textY = currentY + (colorRectSize / 2);
+        int16_t textX = startX + colorRectSize + 8; 
+
+        // Opcional: Podrías cambiar ovl->textColor por un color gris si está oculta
+        // uint16_t renderTextColor = ovl->traces[i].isVisible ? ovl->textColor : COLOR_GRAY;
+
+        gfx_DrawString(pBuf, fontId, textX, textY, 
+                       ovl->traces[i].valueText, ovl->textColor, ALIGN_VCENTER, 1);
+    }
+}
+
+#define INVALID_TRACE_INDEX -1
+
+int gfx_processOverlayTouch(gfx_GraphOverlay *ovl, TouchStatus touch) {
+    if (ovl == NULL) return INVALID_TRACE_INDEX;
+
+    // 1. Obtener las métricas de la fuente
+    int8_t fontId = Theme_ResolveFontId(ovl->typo);
+    uint16_t textW = 0, textH = 20; 
+    if (fontId >= 0) {
+        gfx_GetStringDimensions("0", fontId, &textW, &textH, 1);
+    }
+
+    // 2. Parámetros base del layout
+    int16_t startY = ovl->pos.y + 10;
+    int16_t startX = ovl->pos.x + 10;
+    uint16_t rowHeight = textH + 8; 
+    uint16_t colorRectSize = textH * 0.8f;
+    int16_t hitPadding = 12; 
+
+    // 3. Comprobar límite superior
+    if (touch.y < (startY - hitPadding)) {
+        return INVALID_TRACE_INDEX;
+    }
+
+    // 4. Calcular matemáticamente qué fila fue tocada
+    int16_t relativeY = touch.y - (startY - hitPadding);
+    int touchedTrace = relativeY / rowHeight; // Cambiado a int
+
+    // 5. Validar que la traza calculada realmente exista
+    if (touchedTrace >= ovl->numTraces) {
+        return INVALID_TRACE_INDEX; 
+    }
+
+    // 6. Validar el eje X (Asegurarnos de que tocó cerca del cuadrito de color)
+    if (touch.x < (startX - hitPadding) || 
+        touch.x > (startX + colorRectSize + hitPadding * 2)) {
+        return INVALID_TRACE_INDEX;
+    }
+
+    // Retorna el índice válido (0, 1, 2, 3...)
+	TIVA_LOGI(TASK_NAME, "Touched trace: %d", touchedTrace);
+    return touchedTrace;
 }

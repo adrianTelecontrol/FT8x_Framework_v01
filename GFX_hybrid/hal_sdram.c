@@ -40,7 +40,7 @@
 #define SDRAM_APP_START_ADDRESS 0x60000000
 #define SDRAM_APP_END_ADDRESS 0x61FFFFFF
 
-static const char TASK_NAME[] = "SDRAM_HAL";
+// static const char TASK_NAME[] = "SDRAM_HAL";
 
 
 int HAL_SDRAM_ConfigureEPI(void) {

@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 #include <math.h>
 
 #include "driverlib/sysctl.h"
@@ -10,6 +11,9 @@
 #include "rtc_module.h"
 #include "event_engine.h"
 #include "helpers.h"
+#include "file_manager.h"
+#include "log_manager.h"
+
 #include "control_sim.h"
 
 // Timing parameters
@@ -29,6 +33,14 @@ uint32_t g_ui32HomeStarted = 0;
 uint32_t ui32GraphCount = 0;
 
 float val, t2val, t3val, vinVal, voutVal;
+
+float g_f32SawtoothVal = 0;
+float g_f32SineVal = 0; 
+
+bool g_bLogStarted = false;
+uint32_t g_ui32LogStart = 0;
+
+int32_t g_i32LogId = 0;
 
 char statusStr[12] = "NOMINAL";
 char dateStr[11] = "27/04/2026";
@@ -53,6 +65,20 @@ static void onHomeRendered(uint32_t arg) {
 	Event_Post(EVT_SYS_DATE_CHANGED, (EventParam_t){.str = dateStr});
 }
 
+static void onLogStart(EventParam_t param) {
+	char *HEADER[] = {"Date", "Time", "Time elapsed [ms]", "Sine", "Sawtooth"};
+
+	g_i32LogId = LM_startLog(DRIVE_USB_ID, "this is just a long name", HEADER, 4);
+	if(g_i32LogId == -1) return;
+
+	g_bLogStarted = true;
+	g_ui32LogStart = GetExecTimeMs();
+}
+
+static void onLogStop(EventParam_t param) {
+	g_bLogStarted = false;
+}
+
 void controlSimulatorInit(void)
 {
 	// Initialize variables
@@ -61,6 +87,8 @@ void controlSimulatorInit(void)
 	srand(GetExecTimeMs());
 	Event_Subscribe(EVT_CMD_START_BOOT_SEQ, ( EventHandler_fn ) onBootSequenceStart);
 	Event_Subscribe(EVT_SYS_BOOT_FINISHED, (EventHandler_fn) onBootFinished);
+	Event_Subscribe(EVT_SYS_USB_START_LOG, (EventHandler_fn) onLogStart);
+	Event_Subscribe(EVT_SYS_USB_STOP_LOG, (EventHandler_fn) onLogStop);
 }
 
 void controlSimulatiorTask(void) {
@@ -78,9 +106,9 @@ void controlSimulatiorTask(void) {
 		ui32GraphCount++;
 		//uint32_t val = rand() % 70;
 		// float val =  25.0f * sin((double)g_currExecTime / (700.0)) + 50.0;
-		float val =  25.0f * sin((double)ui32GraphCount / 100) + 50.0;
+		g_f32SineVal =  25.0f * sin((double)ui32GraphCount / 100) + 50.0;
 		
-		Event_Post(EVT_SYS_NEW_GRAPH_VALUE, (EventParam_t){.f32 = val});
+		Event_Post(EVT_SYS_NEW_GRAPH_VALUE, (EventParam_t){.f32 = g_f32SineVal});
 	}
 
 	if(g_currExecTime % 200 == 0)
@@ -99,9 +127,9 @@ void controlSimulatiorTask(void) {
         // Calculate the sawtooth using pure integer math.
         // We multiply first, then divide, to prevent integer truncation to 0.
         // float val = (((g_currExecTime % PERIOD) * AMPLITUDE) / PERIOD) + OFFSET;
-        float val = (((ui32GraphCount % PERIOD) * AMPLITUDE) / PERIOD) + OFFSET;
+        g_f32SawtoothVal = (((ui32GraphCount % PERIOD) * AMPLITUDE) / PERIOD) + OFFSET;
         
-        bool ret = Event_Post(EVT_SYS_NEW_SAWTOOTH_VALUE, (EventParam_t){.f32 = val});
+        bool ret = Event_Post(EVT_SYS_NEW_SAWTOOTH_VALUE, (EventParam_t){.f32 = g_f32SawtoothVal});
     }
 
 	if(g_bBootSequenceStart) {
@@ -181,6 +209,23 @@ void controlSimulatiorTask(void) {
 				strcpy(statusStr, "NOMINAL");
 			}
 			Event_Post(EVT_SYS_STATUS_CHANGED, (EventParam_t){.str = statusStr});
+		}
+	}
+
+	if(g_bLogStarted) {
+		if(g_currExecTime % 500 == 0) {
+			char val[50];
+			char dateStr[12];
+			char timeStr[11];
+
+			RTC_getFormattedTime(timeStr, sizeof(timeStr));
+			RTC_getFormattedDate(dateStr, sizeof(dateStr));
+
+			snprintf(val, sizeof(val), "%s,%s,%u,%.2f,%.2f\n", dateStr, timeStr, g_currExecTime, g_f32SineVal, g_f32SawtoothVal);
+
+			LM_addLine2Log(g_i32LogId, val);
+
+			Event_Post(EVT_SYS_USB_LOG_ADDED, (EventParam_t){.ptr = NULL});
 		}
 	}
 

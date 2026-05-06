@@ -136,6 +136,26 @@ bool RTC_getFormattedDate(char *out_buffer, size_t max_len) {
     return true;
 }
 
+bool RTC_getFileFormattedDate(char *out_buffer, size_t max_len) {
+    if (out_buffer == NULL || max_len == 0) return false;
+
+    RTC_timeDate currentTime;
+    
+    HibernateCalendarGet(&currentTime);
+
+    // Formatear la cadena.
+    // IMPORTANTE: 
+    // tm_mon va de 0 a 11, por lo que sumamos 1.
+    // tm_year son los años desde 1900, por lo que sumamos 1900.
+    // %02d asegura que días y meses menores a 10 tengan un '0' a la izquierda (ej. "04").
+    snprintf(out_buffer, max_len, "%02d_%02d_%04d", 
+             currentTime.tm_mday, 
+             currentTime.tm_mon + 1, 
+             currentTime.tm_year + 1900);
+
+    return true;
+}
+
 bool RTC_getFormattedTime(char *out_buffer, size_t max_len) {
     if (out_buffer == NULL || max_len == 0) return false;
 
@@ -144,6 +164,21 @@ bool RTC_getFormattedTime(char *out_buffer, size_t max_len) {
     HibernateCalendarGet(&currentTime);
 
     snprintf(out_buffer, max_len, "%02d:%02d:%02d", 
+             currentTime.tm_hour, 
+             currentTime.tm_min, 
+             currentTime.tm_sec);
+
+    return true;
+}
+
+bool RTC_getFileFormattedTime(char *out_buffer, size_t max_len) {
+    if (out_buffer == NULL || max_len == 0) return false;
+
+    RTC_timeDate currentTime;
+    
+    HibernateCalendarGet(&currentTime);
+
+    snprintf(out_buffer, max_len, "%02d_%02d_%02d", 
              currentTime.tm_hour, 
              currentTime.tm_min, 
              currentTime.tm_sec);

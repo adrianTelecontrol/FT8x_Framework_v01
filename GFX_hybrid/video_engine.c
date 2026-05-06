@@ -157,9 +157,9 @@ static inline uint32_t prv_FifoFree(uint32_t ui32FifoSize,
 /* -----------------------------------------------------------------------
  * Public: EVE_Video_Play
  * --------------------------------------------------------------------- */
-EVE_VideoResult_t EVE_Video_Play(const char* drive, const char *pcFileName, uint32_t ui32Options)
+EVE_VideoResult_t EVE_Video_Play(const uint8_t drive, const char *pcFileName, uint32_t ui32Options)
 {
-    if (pcFileName == NULL || drive == NULL) {
+    if (pcFileName == NULL ) {
         return EVE_VIDEO_ERR_PARAM;
     }
 
@@ -175,10 +175,15 @@ EVE_VideoResult_t EVE_Video_Play(const char* drive, const char *pcFileName, uint
      * 1. Open the AVI file on the SD card.
      * ---------------------------------------------------------------- */
 
+   const char *driveStr = FM_getDriveString(drive);
+	if(driveStr == NULL) {
+		TIVA_LOGE(TAG, "Drive specified was not found!");
+		return EVE_VIDEO_ERR_PARAM;
+	}
 	char tempFilePath[20];
 	
-	snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", drive, pcFileName);
-    TIVA_LOGI(TAG, "BDF to fetch: %s", tempFilePath);
+	snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", driveStr, pcFileName);
+    TIVA_LOGI(TAG, "Video to fetch: %s", tempFilePath);
 	 
     FIL   hFile;
     FRESULT iFRes = f_open(&hFile, tempFilePath, FA_READ);
@@ -351,3 +356,5 @@ const char *EVE_Video_ResultStr(EVE_VideoResult_t eResult)
         default:                    return "ERR_UNKNOWN";
     }
 }
+
+

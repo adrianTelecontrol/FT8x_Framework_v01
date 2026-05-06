@@ -12,3 +12,5 @@ void useLogoWidget(gfx_Canvas* canvas);
 void useFullHeader(gfx_Canvas* canvas);
 
 #endif // NAVIGATION_WIDGETS_H_ 
+
+

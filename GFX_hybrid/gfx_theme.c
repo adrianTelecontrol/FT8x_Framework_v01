@@ -77,7 +77,7 @@ gfx_Theme_t g_TelecontrolDarkTheme = {
     }
 };
 
-static void onChangeThemeEvent(uint32_t arg) {
+static void onChangeThemeEvent(EventParam_t param) {
 	gfx_FontFamily_e activeFamily = g_pCurrentTheme->fonts.currentFamily;
 
 	if(g_pCurrentTheme == &g_ThemeDark) {
@@ -109,7 +109,7 @@ int8_t Theme_ResolveFontId(gfx_TypoStyle_e typo) {
 // INITIALIZATION
 // ---------------------------------------------------------
 void Theme_Init(bool isDark) {
-    gfx_FontFamily_e activeFamily = g_pCurrentTheme->fonts.currentFamily;
+    // gfx_FontFamily_e activeFamily = g_pCurrentTheme->fonts.currentFamily;
 	
 
     if (isDark) {
@@ -122,7 +122,7 @@ void Theme_Init(bool isDark) {
     // Theme_SetFontFamily(FONT_FAM_INTER);
     //Theme_SetFontFamilyLow(FONT_FAM_INTER);
 
-	Event_Subscribe(EVT_CMD_CHANGE_THEME, onChangeThemeEvent);
+	Event_Subscribe(EVT_CMD_CHANGE_THEME, (EventHandler_fn) onChangeThemeEvent);
 }
 
 void Theme_SetMode(bool isDark) {

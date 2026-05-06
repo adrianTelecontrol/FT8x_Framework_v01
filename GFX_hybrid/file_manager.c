@@ -38,6 +38,14 @@ const char* FM_StringFromFResult(FRESULT iFResult) {
     return "UNKNOWN_ERR";
 }
 
+const char* FM_getDriveString(uint8_t drive) {
+	switch (drive) {
+		case DRIVE_SD_ID: return "0:";
+		case DRIVE_USB_ID: return "1:";
+		default: return NULL;
+	}
+}
+
 #if 0
 int FM_cd(int argc, char *argv[]) {
   	uint_fast8_t ui8Idx;
@@ -344,16 +352,21 @@ int FM_FetchBitmap(const char *drive, const char *pcFilePath, BitmapHandler_t *p
     return 0;
 }
 
-bool FM_FetchBDF(const char *drive, const char *pcFilePath, BDF_Font_t *psFont,  uint16_t startChar, uint16_t endChar) {
+bool FM_FetchBDF(const uint8_t drive, const char *pcFilePath, BDF_Font_t *psFont,  uint16_t startChar, uint16_t endChar) {
     FIL file;
     FRESULT fr;
     UINT bytesRead;
 
-	if(drive == NULL | pcFilePath == NULL) return false;
+	if(pcFilePath == NULL) return false;
 
-	char tempFilePath[30];	
+   const char *driveStr = FM_getDriveString(drive);
+	if(driveStr == NULL) {
+		TIVA_LOGE(TASK_NAME, "Drive specified was not found!");
+		return false;
+	}
+	char tempFilePath[50];	
 
-	snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", drive, pcFilePath);
+	snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", driveStr, pcFilePath);
 
     TIVA_LOGI(TASK_NAME, "BDF to fetch: %s", tempFilePath);
 
@@ -484,16 +497,22 @@ bool FM_FetchBDF(const char *drive, const char *pcFilePath, BDF_Font_t *psFont, 
     return true;
 }
 
-bool FM_LoadEVEImage(const char *drive, const char *pcFilePath, gfx_Image *img, uint32_t targetRamGAddr) {
+bool FM_LoadEVEImage(const uint8_t drive, const char *pcFilePath, gfx_Image *img, uint32_t targetRamGAddr) {
 
     FIL file;
     UINT bytesRead;
 
-	if(drive == NULL | pcFilePath == NULL) return false;
+	if(pcFilePath == NULL) return false;
 
-	char tempFilePath[20];	
+	char tempFilePath[50];	
 
-	snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", drive, pcFilePath);
+   const char *driveStr = FM_getDriveString(drive);
+	if(driveStr == NULL) {
+		TIVA_LOGE(TASK_NAME, "Drive specified was not found!");
+		return false;
+	}
+
+	snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", driveStr, pcFilePath);
 
     TIVA_LOGI(TASK_NAME, "Image to load: %s", tempFilePath);
 
@@ -535,17 +554,23 @@ bool FM_LoadEVEImage(const char *drive, const char *pcFilePath, gfx_Image *img, 
 // FUNCIONES DE ESCRITURA (¡NUEVAS! Para tu Data Logging)
 // =====================================================================
 
-bool FM_WriteFile(const char *drive, const char *pcFilePath, const uint8_t *pData, uint32_t size) {
+bool FM_WriteFile(const uint8_t drive, const char *pcFilePath, const uint8_t *pData, uint32_t size) {
     FIL file;
     UINT bytesWritten = 0;
     
     // FIX 1: Usar operador lógico OR (||)
-    if(drive == NULL || pcFilePath == NULL || pData == NULL) return false;
+    if(pcFilePath == NULL || pData == NULL) return false;
 
     // FIX 2: Buffer lo suficientemente grande (al menos 64 o 100 bytes)
     char tempFilePath[64];  
+	const char *driveStr = FM_getDriveString(drive);
 
-    snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", drive, pcFilePath);
+	if(driveStr == NULL) {
+		TIVA_LOGE(TASK_NAME, "Drive specified was not found!");
+		return false;
+	}
+	
+    snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", driveStr, pcFilePath);
 
     TIVA_LOGI(TASK_NAME, "File to write: %s", tempFilePath);
 
@@ -567,42 +592,52 @@ bool FM_WriteFile(const char *drive, const char *pcFilePath, const uint8_t *pDat
     return true;
 }
 
-bool FM_AppendLog(const char *drive, const char *pcFilePath, const char *logText) {
+bool FM_AppendLog(const uint8_t drive, const char *pcFilePath, const char *logText) {
     FIL file;
     UINT bytesWritten;
 
-	if(drive == NULL | pcFilePath == NULL) return false;
+    if(pcFilePath == NULL || logText == NULL) {
+        TIVA_LOGE(TASK_NAME, "Error: Append log path or text was NULL!");
+        return false;
+    }   
 
-	char tempFilePath[20];	
+    // Increased buffer size to prevent memory corruption
+    char tempFilePath[64];  
+    const char *driveStr = FM_getDriveString(drive);
 
-	snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", drive, pcFilePath);
-
-    TIVA_LOGI(TASK_NAME, "File to append into: %s", tempFilePath);
-    
-    // FA_OPEN_APPEND abre el archivo y mueve el puntero al final. 
-    // Si no existe, lo crea. (Requiere habilitar FF_USE_EXPAND y FA_OPEN_APPEND en ffconf.h)
-    FRESULT res = f_open(&file, tempFilePath, FA_WRITE | FA_CREATE_NEW);
-    
-    // Fallback por si FA_OPEN_APPEND no está habilitado en ffconf.h:
-    if (res == FR_INVALID_PARAMETER) {
-        res = f_open(&file, pcFilePath, FA_WRITE | FA_OPEN_ALWAYS);
-        if (res == FR_OK) {
-            f_lseek(&file, f_size(&file)); // Mover manualmente al final
-        }
+    if(driveStr == NULL) {
+        TIVA_LOGE(TASK_NAME, "Drive specified was not found!");
+        return false;
     }
 
+    snprintf(tempFilePath, sizeof(tempFilePath), "%s/%s", driveStr, pcFilePath);
+
+    // TIVA_LOGI(TASK_NAME, "File to append into: %s", tempFilePath);
+    
+    // 1. Open the file. If it doesn't exist, create it. If it does, just open it.
+    FRESULT res = f_open(&file, tempFilePath, FA_WRITE | FA_OPEN_ALWAYS);
+    
     if (res != FR_OK) {
         TIVA_LOGE(TASK_NAME, "Error abriendo LOG: %s", FM_StringFromFResult(res));
         return false;
     }
 
+    // 2. Move the file read/write pointer to the end of the file (Append mode)
+    res = f_lseek(&file, f_size(&file));
+    if (res != FR_OK) {
+        TIVA_LOGE(TASK_NAME, "Error seeking to end of LOG: %s", FM_StringFromFResult(res));
+        f_close(&file);
+        return false;
+    }
+
+    // 3. Write the new data at the end of the file
     res = f_write(&file, logText, strlen(logText), &bytesWritten);
     
-    // Forzamos el guardado físico de los datos (Sync)
+    // 4. Force physical save to the USB/SD (Sync) and close
     f_sync(&file); 
     f_close(&file);
 
-    return (res == FR_OK);
+    return (res == FR_OK && bytesWritten == strlen(logText));
 }
 
 // =====================================================================

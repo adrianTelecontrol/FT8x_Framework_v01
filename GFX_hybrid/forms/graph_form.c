@@ -30,6 +30,9 @@ gfx_GenericWidget graphSawtoothContainer;
 gfx_GenericWidget multigraphContainer;
 gfx_GenericWidget graphOverlayContainer;
 gfx_GenericWidget multigraphOverlayContainer;
+gfx_GenericWidget graphCursorContainer;
+gfx_GenericWidget graphCursor2Container;
+gfx_GenericWidget cursorOverlayContainer;
 
 gfx_Graph graphWidget;
 gfx_Graph graphSawtoothWidget;
@@ -37,20 +40,33 @@ gfx_Label graphTitle;
 gfx_MultiGraph multigraphWidget;
 gfx_GraphOverlay graphOverlayWidget;
 gfx_GraphOverlay multigraphOverlayWidget;
+gfx_GraphCursor graphCursorWidget;
+gfx_GraphCursor graphCursor2Widget;
+gfx_GraphOverlay graphCursorOverlayWidget;
 
 int16_t graphData[NUM_POINTS]; 
 int16_t sawtoothData[NUM_POINTS];
 int16_t multigraphData1[NUM_POINTS];
 int16_t multigraphData2[NUM_POINTS];
 
-static char graphOverlayData[] = "TC1: 62.49 [C]";
-
-
 static void onNewGraphValue(EventParam_t arg) {
 	gfx_GraphAddPoint(&graphWidget, (int16_t)arg.f32);
 	if(GetExecTimeMs() % 500 == 0) {
 		sprintf(graphOverlayWidget.traces[0].valueText, "TC1: %.2f [C]", arg.f32);
 		graphOverlayWidget.bIsDirty = true;
+
+		int16_t val = 0;
+		if(graphCursorWidget.isVisible) {
+			val = gfx_GraphCursorGetValue(&graphCursorWidget);
+			sprintf(graphCursorOverlayWidget.traces[0].valueText, "C1: %d [C]", val);
+			graphCursorOverlayWidget.bIsDirty = true;
+		}
+	
+		if(graphCursor2Widget.isVisible) {
+			val = gfx_GraphCursorGetValue(&graphCursor2Widget);
+			sprintf(graphCursorOverlayWidget.traces[1].valueText, "C2: %d [C]", val);
+			graphCursorOverlayWidget.bIsDirty = true;
+		}
 	}
 }
 
@@ -73,6 +89,40 @@ static void onMultigraphSawtoothValue(EventParam_t arg) {
 		sprintf(multigraphOverlayWidget.traces[1].valueText, "TC2: %.2f [C]", arg.f32);
 		multigraphOverlayWidget.bIsDirty = true;
 	}
+}
+
+static void onOverlayToggle(gfx_GraphOverlay *over, int trace) {
+	if(trace >= over->numTraces) return;
+	
+	if(over->traces[trace].isVisible) {
+		over->traces[trace].isVisible = false;
+		graphWidget.isTraceVisible = false;
+	} else {
+		over->traces[trace].isVisible = true;
+		graphWidget.isTraceVisible = true;
+	}
+
+	over->bIsDirty = true;
+}
+
+static void onCursorOverlayToggle(gfx_GraphOverlay *over, int trace) {
+	if(trace >= over->numTraces) return;
+	
+	if(over->traces[trace].isVisible) {
+		over->traces[trace].isVisible = false;
+		if(trace == 0)
+			graphCursorWidget.isVisible = false;
+		else if(trace == 1)
+			graphCursor2Widget.isVisible = false;
+	} else {
+		over->traces[trace].isVisible = true;
+		if(trace == 0)
+			graphCursorWidget.isVisible = true;
+		else if(trace == 1)
+			graphCursor2Widget.isVisible = true;
+	}
+
+	over->bIsDirty = true;
 }
 
 void initGraphForm(void) {
@@ -102,8 +152,10 @@ void initGraphForm(void) {
 		.maxY = 90,
 		.gridLinesX = 4,
 		.gridLinesY = 3,
-		.size.height = 162,
-		.size.width = 750,
+		//.size.height = 162,
+		.size.height = 162 * 2,
+		// .size.width = 750,
+		.size.width = 575,
 		.pos.x = 20,
 		.pos.y = 75,
 		.bgColor = g_pCurrentTheme->palette.surface,
@@ -113,12 +165,48 @@ void initGraphForm(void) {
 		.typo = TYPO_CAPTION,
 		.textColor = g_pCurrentTheme->palette.textMuted,
 		.bShowLabels = true,
+		.totalPointsAdded = 0,
+		.isTraceVisible = true,
 	};
 	memset(graphData, 0, NUM_POINTS * 2);
 	
 	//gfx_GraphAddPoint(&graphWidget, 50);
 	graphWidgetContainer.eWidgetType = WD_TYPE_GRAPH;
 	graphWidgetContainer.pvWidget = (void *)&graphWidget;
+
+	graphCursorWidget = (gfx_GraphCursor){
+        .name = "cursor1",      // <- IMPORTANTE
+        .bIsDirty = false,      // <- IMPORTANTE: Evita el spam del SPI
+        // .pos y .size se inicializarán en 0 por defecto, lo cual está bien
+        .parent = (const gfx_Graph *)&graphWidget,
+        .relX = 200,
+        .relY = 10,
+        .type = CURSOR_VERTICAL,
+        .lineWidth = 3,
+        .color = COLOR_BLUE_PRIMARY,
+        .isVisible = true,
+        .alpha = 155,
+    };
+	gfx_initRegTouch((void *)&graphCursorWidget, WD_TYPE_GRAPH_CURSOR);
+	graphCursorContainer.eWidgetType = WD_TYPE_GRAPH_CURSOR;
+	graphCursorContainer.pvWidget = (void *)&graphCursorWidget;
+
+	graphCursor2Widget = (gfx_GraphCursor){
+        .name = "cursor2",      // <- IMPORTANTE
+        .bIsDirty = false,      // <- IMPORTANTE: Evita el spam del SPI
+        // .pos y .size se inicializarán en 0 por defecto, lo cual está bien
+        .parent = (const gfx_Graph *)&graphWidget,
+        .relX = 300,
+        .relY = 10,
+        .type = CURSOR_VERTICAL,
+        .lineWidth = 3,
+        .color = COLOR_SOFT_RED,
+        .isVisible = true,
+        .alpha = 155,
+    };
+	gfx_initRegTouch((void *)&graphCursor2Widget, WD_TYPE_GRAPH_CURSOR);
+	graphCursor2Container.eWidgetType = WD_TYPE_GRAPH_CURSOR;
+	graphCursor2Container.pvWidget = (void *)&graphCursor2Widget;
 
 	uint16_t strWidth, strHeight;
 	gfx_GetStringDimensions("TC1: 62.49 [C]", Theme_ResolveFontId(TYPO_MONO), &strWidth, &strHeight, 1);
@@ -141,14 +229,58 @@ void initGraphForm(void) {
 	            // Must strictly match the graph's lineColor to make visual sense
 	            .color = g_pCurrentTheme->palette.primary, 
 	            .valueText = "--", // Default state before first event
-	            .isVisible = true
+	            .isVisible = true,
+				.enableTrace = true,
 	        }
 	    },
-	    .bIsDirty = true
+	    .bIsDirty = true,
+		.onTraceToggle = onOverlayToggle,
 	};
+
+	gfx_initRegTouch((void *)&graphOverlayWidget, WD_TYPE_GRAPH_OVERLAY);
 
 	graphOverlayContainer.eWidgetType = WD_TYPE_GRAPH_OVERLAY;
 	graphOverlayContainer.pvWidget = (void *)&graphOverlayWidget;
+
+	gfx_GetStringDimensions("CX: 62.49 [C]", Theme_ResolveFontId(TYPO_MONO), &strWidth, &strHeight, 1);
+
+	uint16_t cursorOverlayWidth = strWidth * 1.3f;
+	uint16_t cursorOverlayHeight = strHeight * 1.6f;
+	graphCursorOverlayWidget = (gfx_GraphOverlay){
+	    .name = "cursorOverlay",
+	    .pos.x = graphWidget.pos.x + graphWidget.size.width + 10, 
+	    .pos.y = graphWidget.pos.y,        
+	    .size.width = cursorOverlayWidth,
+	    .size.height = cursorOverlayHeight * 2, 
+	    .bgColor = g_pCurrentTheme->palette.surface, 
+	    .textColor = g_pCurrentTheme->palette.textMain, // Make it pop more than textMuted
+	    .typo = TYPO_CAPTION,
+	    // --- DATA ---
+	    .numTraces = 2,
+	    .traces = {
+	        [0] = {
+	            // Must strictly match the graph's lineColor to make visual sense
+	            .color = graphCursorWidget.color, 
+	            .valueText = "C1: 62.49 [C]", // Default state before first event
+	            .isVisible = true,
+				.enableTrace = true,
+	        }, 
+	        [1] = {
+	            // Must strictly match the graph's lineColor to make visual sense
+	            .color = graphCursor2Widget.color, 
+	            .valueText = "C2: 62.49 [C]", // Default state before first event
+	            .isVisible = true,
+				.enableTrace = true,
+	        }
+	    },
+	    .bIsDirty = true,
+		.onTraceToggle = onCursorOverlayToggle,
+	};
+
+	gfx_initRegTouch((void *)&graphCursorOverlayWidget, WD_TYPE_GRAPH_OVERLAY);
+
+	cursorOverlayContainer.eWidgetType = WD_TYPE_GRAPH_OVERLAY;
+	cursorOverlayContainer.pvWidget = (void *)&graphCursorOverlayWidget;
 
 	multigraphWidget = (gfx_MultiGraph){
 		.name = "sawtooth_graph",
@@ -168,6 +300,7 @@ void initGraphForm(void) {
 		.typo = TYPO_CAPTION,
 		.textColor = g_pCurrentTheme->palette.textMuted,
 		.bShowLabels = true,
+		.totalPointsAdded = {0},
 	};
 	multigraphWidget.dataSets[0] = multigraphData1;
 	multigraphWidget.dataSets[1] = multigraphData2;
@@ -220,9 +353,12 @@ void initGraphForm(void) {
 	useFullHeader(&g_sGraphFormCanvas);
 	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphTitleContainer);
 	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphWidgetContainer);
-	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &multigraphContainer);
+ 	// canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &multigraphContainer);
 	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphOverlayContainer);
-	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &multigraphOverlayContainer);
+	// canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &multigraphOverlayContainer);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphCursorContainer);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphCursor2Container);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &cursorOverlayContainer);
 
 	
 	useNavigationButtons(&g_sGraphFormCanvas);

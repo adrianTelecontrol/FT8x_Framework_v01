@@ -102,7 +102,7 @@
                         </toolChain>
                     </folderInfo>
                     <sourceEntries>
-                        <entry excluding="draw_bitmap.c|image_loader.c|third_party/port/mmc-ek-tm4c1294xl.c|third_party/src/option/cc932.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+                        <entry excluding="third_party/src/option/unicode.c|draw_bitmap.c|image_loader.c|third_party/port/mmc-ek-tm4c1294xl.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
                     </sourceEntries>
                 </configuration>
             </storageModule>

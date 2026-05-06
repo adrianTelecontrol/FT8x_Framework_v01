@@ -20,3 +20,5 @@ void HAL_USB_Task(void);
 bool HAL_USB_IsReady(void);
 
 #endif // HAL_USB_H_
+
+

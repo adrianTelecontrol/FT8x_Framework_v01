@@ -27,3 +27,5 @@ void Helper_FloatToString(char *buffer, uint32_t whole, uint32_t frac,
   if (bAddEnd)
     *ptr++ = '\0';
 }
+
+

@@ -50,6 +50,11 @@
 // HELPER MACROS
 // ---------------------------------------------------------
 // Assuming you already have this somewhere, but good to keep in the colors file!
-#define DARKEN_COLOR(c)         ((((c) & 0xF7DE) >> 1) | (((c) & 0x0821) ? 0x0000 : 0))
+// #define DARKEN_COLOR(c)         ((((c) & 0xF7DE) >> 1) | (((c) & 0x0821) ? 0x0000 : 0))
 
+// Darkens any RGB565 color by 50% safely and instantly
+#define DARKEN_COLOR(c) (((c) & 0xF7DE) >> 1)
+#define LIGHTEN_COLOR(c) ((c) - (((c) & 0xE79C) >> 2) + 0x39E7)
 #endif // GFX_COLORS_H_
+
+

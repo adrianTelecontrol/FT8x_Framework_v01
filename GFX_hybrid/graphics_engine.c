@@ -93,7 +93,7 @@ volatile DMAJobQueue_t g_DMAQueue = {0};
 
 volatile RenderEngine_t g_RenderEngine = {RENDER_IDLE};
 
-static const char *TASK_NAME = "gfx";
+// static const char *TASK_NAME = "gfx";
 
 // SPI ISR
 // Bandera global que debes definir en graphics_engine.c
@@ -956,7 +956,6 @@ void Gfx_renderTask(void) {
   // redibujar el hardware después de que termine una transferencia DMA
   // asíncrona.
   static bool bHardwareNeedsUpdate = false;
-  bool bSoftwareNeedsUpdate = false;
 
   switch (g_RenderEngine.state) {
 
@@ -989,6 +988,7 @@ void Gfx_renderTask(void) {
 
     // Evalúa si componentes puramente de EVE (gráficas) cambiaron.
     bHardwareNeedsUpdate = formManagerCheckHardwareDirty();
+	//bHardwareNeedsUpdate = true;
 
     // 3. ¿Tenemos bloques listos para transferir vía uDMA?
     if (g_DMAQueue.count > 0) {
@@ -1031,11 +1031,12 @@ void Gfx_renderTask(void) {
 
       // Toda la RAM_G ha sido actualizada, pasamos a renderizar EVE
       g_RenderEngine.state = RENDER_EVE_COMPONENTS;
-    }
-    // 4. FAST PATH: Si no hay trabajos DMA, pero el hardware EVE sí cambió.
-    else if (bHardwareNeedsUpdate) {
+    } 
+	if (bHardwareNeedsUpdate) {
       g_RenderEngine.state = RENDER_EVE_COMPONENTS;
     }
+
+    // 4. FAST PATH: Si no hay trabajos DMA, pero el hardware EVE sí cambió.
     break;
 
   case RENDER_WAIT_DMA:
