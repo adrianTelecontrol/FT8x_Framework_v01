@@ -33,6 +33,11 @@ gfx_GenericWidget multigraphOverlayContainer;
 gfx_GenericWidget graphCursorContainer;
 gfx_GenericWidget graphCursor2Container;
 gfx_GenericWidget cursorOverlayContainer;
+gfx_GenericWidget statsPanelContainer;
+gfx_GenericWidget statsTitleContainer;
+gfx_GenericWidget statsAvgContainer;
+gfx_GenericWidget statsMaxContainer;
+gfx_GenericWidget statsMinContainer;
 
 gfx_Graph graphWidget;
 gfx_Graph graphSawtoothWidget;
@@ -43,29 +48,52 @@ gfx_GraphOverlay multigraphOverlayWidget;
 gfx_GraphCursor graphCursorWidget;
 gfx_GraphCursor graphCursor2Widget;
 gfx_GraphOverlay graphCursorOverlayWidget;
+gfx_Rectangle statsPanelWidget;
+gfx_Label statsTitleWidget;
+gfx_Label statsMaxWidget;
+gfx_Label statsAvgWidget;
+gfx_Label statsMinWidget;
 
-int16_t graphData[NUM_POINTS]; 
-int16_t sawtoothData[NUM_POINTS];
-int16_t multigraphData1[NUM_POINTS];
-int16_t multigraphData2[NUM_POINTS];
+float graphData[NUM_POINTS]; 
+float sawtoothData[NUM_POINTS];
+float multigraphData1[NUM_POINTS];
+float multigraphData2[NUM_POINTS];
+
+char avgBuffer[] = "Avg  100.23 [C]";
+char maxBuffer[] = "Max  100.23 [C]";
+char minBuffer[] = "Max  100.23 [C]";
 
 static void onNewGraphValue(EventParam_t arg) {
-	gfx_GraphAddPoint(&graphWidget, (int16_t)arg.f32);
+	gfx_GraphAddPoint(&graphWidget, arg.f32);
 	if(GetExecTimeMs() % 500 == 0) {
 		sprintf(graphOverlayWidget.traces[0].valueText, "TC1: %.2f [C]", arg.f32);
 		graphOverlayWidget.bIsDirty = true;
 
-		int16_t val = 0;
-		if(graphCursorWidget.isVisible) {
+		float val = 0;
+		if(graphCursorWidget.isVisible && graphWidget.isTraceVisible) {
 			val = gfx_GraphCursorGetValue(&graphCursorWidget);
-			sprintf(graphCursorOverlayWidget.traces[0].valueText, "C1: %d [C]", val);
+			sprintf(graphCursorOverlayWidget.traces[0].valueText, "C1: %.2f [C]", val);
 			graphCursorOverlayWidget.bIsDirty = true;
 		}
 	
-		if(graphCursor2Widget.isVisible) {
+		if(graphCursor2Widget.isVisible && graphWidget.isTraceVisible) {
 			val = gfx_GraphCursorGetValue(&graphCursor2Widget);
-			sprintf(graphCursorOverlayWidget.traces[1].valueText, "C2: %d [C]", val);
+			sprintf(graphCursorOverlayWidget.traces[1].valueText, "C2: %.2f [C]", val);
 			graphCursorOverlayWidget.bIsDirty = true;
+		}
+
+		if(graphCursor2Widget.isVisible && graphWidget.isTraceVisible && graphCursorWidget.isVisible) {
+			float avg = gfx_GraphGetAverageBetweenCursors(&graphCursorWidget, &graphCursor2Widget);
+			snprintf(avgBuffer, sizeof(avgBuffer), "Avg   %.2f [C]", avg);
+			statsAvgWidget.bIsDirty = true;
+
+			float max = gfx_GraphGetMaxBetweenCursors(&graphCursorWidget, &graphCursor2Widget);
+			snprintf(maxBuffer, sizeof(maxBuffer), "Max   %.2f [C]", max);
+			statsMaxWidget.bIsDirty = true;
+
+			float min = gfx_GraphGetMinBetweenCursors(&graphCursorWidget, &graphCursor2Widget);
+			snprintf(minBuffer, sizeof(minBuffer), "Min   %.2f [C]", min);
+			statsMinWidget.bIsDirty = true;
 		}
 	}
 }
@@ -110,10 +138,28 @@ static void onCursorOverlayToggle(gfx_GraphOverlay *over, int trace) {
 	
 	if(over->traces[trace].isVisible) {
 		over->traces[trace].isVisible = false;
-		if(trace == 0)
+		if(trace == 0) {
 			graphCursorWidget.isVisible = false;
-		else if(trace == 1)
+			strcpy(graphCursorOverlayWidget.traces[0].valueText, "C1: --");
+			strcpy(avgBuffer, "Avg  --");
+			strcpy(maxBuffer, "Max  --");
+			strcpy(minBuffer, "Min  --");
+			statsAvgWidget.bIsDirty = true;
+			statsMaxWidget.bIsDirty = true;
+			statsMinWidget.bIsDirty = true;
+
+		}
+		else if(trace == 1) {
 			graphCursor2Widget.isVisible = false;
+			strcpy(graphCursorOverlayWidget.traces[1].valueText, "C2: --");
+			strcpy(avgBuffer, "Avg  --");
+			strcpy(maxBuffer, "Max  --");
+			strcpy(minBuffer, "Min  --");
+			statsAvgWidget.bIsDirty = true;
+			statsMaxWidget.bIsDirty = true;
+			statsMinWidget.bIsDirty = true;
+		}
+		
 	} else {
 		over->traces[trace].isVisible = true;
 		if(trace == 0)
@@ -345,6 +391,72 @@ void initGraphForm(void) {
 	multigraphContainer.eWidgetType = WD_TYPE_MULTIGRAPH;
 	multigraphContainer.pvWidget = (void *)&multigraphWidget;
 
+	int16_t posY = graphCursorOverlayWidget.pos.y + graphCursorOverlayWidget.size.height + 15;
+	statsPanelWidget = (gfx_Rectangle){
+		.pos.x = graphWidget.pos.x + graphWidget.size.width + 15,
+		.pos.y = posY, 
+		.dim.width = cursorOverlayWidth,
+		.dim.height = graphWidget.pos.y + graphWidget.size.height - posY,
+		.color = g_pCurrentTheme->palette.surface,
+		.borderWidth = 1,
+		.round = 5,
+		.name = "statsPanel",
+	};
+
+	statsPanelContainer.eWidgetType = WD_TYPE_RECT;
+	statsPanelContainer.pvWidget = (void *)&statsPanelWidget;
+
+	statsTitleWidget = (gfx_Label){
+		.text = "Stats",
+		.alignment = ALIGN_CENTER,
+		.isVisible = true,
+		.pos.x = statsPanelWidget.pos.x + statsPanelWidget.dim.width / 2,
+		.pos.y = statsPanelWidget.pos.y + 10,
+		.style = STYLE_TEXT_MAIN,
+		.typo = TYPO_MONO_BOLD,
+	};
+	statsTitleContainer.eWidgetType = WD_TYPE_LABEL;
+	statsTitleContainer.pvWidget = (void *)&statsTitleWidget;
+
+	statsAvgWidget = (gfx_Label){
+		.text = avgBuffer,
+		.name = "avgLb",
+		.alignment = ALIGN_CENTER,
+		.pos.x = statsPanelWidget.pos.x + statsPanelWidget.dim.width / 2,
+		.pos.y = statsTitleWidget.pos.y + 35,
+		.style = STYLE_SECONDARY,
+		.typo = TYPO_MONO,
+		.isVisible = true,
+	};
+	statsAvgContainer.eWidgetType = WD_TYPE_LABEL;
+	statsAvgContainer.pvWidget = (void *)&statsAvgWidget;
+
+	statsMaxWidget = (gfx_Label){
+		.text = maxBuffer,
+		.name = "avgLb",
+		.alignment = ALIGN_CENTER,
+		.pos.x = statsPanelWidget.pos.x + statsPanelWidget.dim.width / 2,
+		.pos.y = statsAvgWidget.pos.y + 35,
+		.style = STYLE_SECONDARY,
+		.typo = TYPO_MONO,
+		.isVisible = true,
+	};
+	statsMaxContainer.eWidgetType = WD_TYPE_LABEL;
+	statsMaxContainer.pvWidget = (void *)&statsMaxWidget;
+
+	statsMinWidget = (gfx_Label){
+		.text = minBuffer,
+		.name = "avgLb",
+		.alignment = ALIGN_CENTER,
+		.pos.x = statsPanelWidget.pos.x + statsPanelWidget.dim.width / 2,
+		.pos.y = statsMaxWidget.pos.y + 35,
+		.style = STYLE_SECONDARY,
+		.typo = TYPO_MONO,
+		.isVisible = true,
+	};
+	statsMinContainer.eWidgetType = WD_TYPE_LABEL;
+	statsMinContainer.pvWidget = (void *)&statsMinWidget;
+	
 	Event_Subscribe(EVT_SYS_NEW_GRAPH_VALUE, ( EventHandler_fn )onNewGraphValue );
 	Event_Subscribe(EVT_SYS_NEW_SAWTOOTH_VALUE, (EventHandler_fn)onSawtoothGraphValue);
 	Event_Subscribe(EVT_SYS_NEW_GRAPH_VALUE, ( EventHandler_fn )onMultigraphSine );
@@ -359,6 +471,11 @@ void initGraphForm(void) {
 	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphCursorContainer);
 	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &graphCursor2Container);
 	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &cursorOverlayContainer);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &statsPanelContainer);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &statsTitleContainer);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &statsAvgContainer);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &statsMaxContainer);
+	canvasInsertAtTop(&g_sGraphFormCanvas.psWidgets, &statsMinContainer);
 
 	
 	useNavigationButtons(&g_sGraphFormCanvas);

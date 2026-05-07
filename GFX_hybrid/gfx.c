@@ -1290,7 +1290,7 @@ void UpdateDisplayWithGraphOverlay(gfx_Graph *graph, gfx_Graph *graph2) {
   API_LIB_AwaitCoProEmpty();
 }
 
-void gfx_GraphAddPoint(gfx_Graph *graph, int16_t newValue) {
+void gfx_GraphAddPoint(gfx_Graph *graph, float newValue) {
     if(!graph || !graph->data) return;
 
     // Sobrescribimos el dato más viejo en la posición 'head'
@@ -1688,7 +1688,7 @@ void gfx_GraphCursorRenderEVE(gfx_GraphCursor *cursor) {
     API_COLOR_A(255); 
 }
 
-int16_t gfx_GraphCursorGetValue(gfx_GraphCursor *cursor) {
+float gfx_GraphCursorGetValue(gfx_GraphCursor *cursor) {
     if (cursor == NULL || cursor->parent == NULL || cursor->parent->maxPoints < 2) return 0;
     
     const gfx_Graph *g = cursor->parent;
@@ -1710,6 +1710,179 @@ int16_t gfx_GraphCursorGetValue(gfx_GraphCursor *cursor) {
     }
 
     return g->data[dataIdx];
+}
+
+float gfx_GraphGetAverageBetweenCursors(const gfx_GraphCursor *c1, const gfx_GraphCursor *c2) {
+    // 1. Validaciones de seguridad
+    if (!c1 || !c2 || !c1->parent || c1->parent != c2->parent) {
+        return 0.0f; // Deben pertenecer a la misma gráfica
+    }
+
+    const gfx_Graph *g = c1->parent;
+    if (g->maxPoints < 2 || g->totalPointsAdded == 0) {
+        return 0.0f;
+    }
+
+    // 2. Determinar cuál cursor está a la izquierda (Start) y cuál a la derecha (End)
+    // Esto permite al usuario cruzar los cursores sin romper el cálculo
+    int16_t leftX = (c1->relX < c2->relX) ? c1->relX : c2->relX;
+    int16_t rightX = (c1->relX > c2->relX) ? c1->relX : c2->relX;
+
+    // 3. Mapear X (píxeles) a índices lógicos (0 a maxPoints - 1)
+    uint16_t startIdx = (leftX * (g->maxPoints - 1)) / g->size.width;
+    uint16_t endIdx = (rightX * (g->maxPoints - 1)) / g->size.width;
+
+    // 4. Proteger contra áreas vacías si la gráfica aún se está llenando (Fase de Sweep)
+    if (g->totalPointsAdded < g->maxPoints) {
+        if (startIdx >= g->totalPointsAdded) {
+            return 0.0f; // Ambos cursores están en el espacio vacío a la derecha
+        }
+        if (endIdx >= g->totalPointsAdded) {
+            endIdx = g->totalPointsAdded - 1; // Limitar al dato más nuevo
+        }
+    }
+
+    // 5. Acumular los valores
+    // NOTA: Usamos int32_t para 'sum' para evitar un overflow aritmético. 
+    // Si tienes 800 puntos a su valor máximo de 16-bits (32,767), la suma es 
+    // ~26 millones, que cabe sobradamente en los 2 billones límite de un int32_t.
+    float sum = 0; 
+    float count = (endIdx - startIdx) + 1;
+
+	uint16_t i = startIdx;
+    for (; i <= endIdx; i++) {
+        uint16_t dataIdx;
+        
+        // Aplicar la lógica del buffer
+        if (g->totalPointsAdded < g->maxPoints) {
+            dataIdx = i; // Lectura lineal
+        } else {
+            dataIdx = (g->head + i) % g->maxPoints; // Lectura circular (Ring Buffer)
+        }
+        
+        sum += g->data[dataIdx];
+    }
+
+    // 6. Calcular y devolver el promedio
+    return sum / count;
+}
+
+float gfx_GraphGetMaxBetweenCursors(const gfx_GraphCursor *c1, const gfx_GraphCursor *c2) {
+    // 1. Validaciones de seguridad
+    if (!c1 || !c2 || !c1->parent || c1->parent != c2->parent) {
+        return 0; 
+    }
+
+    const gfx_Graph *g = c1->parent;
+    if (g->maxPoints < 2 || g->totalPointsAdded == 0) {
+        return 0;
+    }
+
+    // 2. Determinar Izquierda (Start) y Derecha (End)
+    int16_t leftX = (c1->relX < c2->relX) ? c1->relX : c2->relX;
+    int16_t rightX = (c1->relX > c2->relX) ? c1->relX : c2->relX;
+
+    // 3. Mapear a índices
+    uint16_t startIdx = (leftX * (g->maxPoints - 1)) / g->size.width;
+    uint16_t endIdx = (rightX * (g->maxPoints - 1)) / g->size.width;
+
+    // 4. Proteger contra áreas vacías (Fase Sweep)
+    if (g->totalPointsAdded < g->maxPoints) {
+        if (startIdx >= g->totalPointsAdded) {
+            return 0; 
+        }
+        if (endIdx >= g->totalPointsAdded) {
+            endIdx = g->totalPointsAdded - 1; 
+        }
+    }
+
+    // 5. Inicializar maxVal con el primer dato real dentro del rango
+    uint16_t firstDataIdx;
+    if (g->totalPointsAdded < g->maxPoints) {
+        firstDataIdx = startIdx;
+    } else {
+        firstDataIdx = (g->head + startIdx) % g->maxPoints;
+    }
+    
+    float maxVal = g->data[firstDataIdx];
+
+    // 6. Iterar buscando un valor mayor
+    // Comenzamos desde startIdx + 1 porque ya leímos el primer valor
+	uint16_t i = startIdx + 1;
+    for (; i <= endIdx; i++) {
+        uint16_t dataIdx;
+        
+        if (g->totalPointsAdded < g->maxPoints) {
+            dataIdx = i; 
+        } else {
+            dataIdx = (g->head + i) % g->maxPoints; 
+        }
+        
+        if (g->data[dataIdx] > maxVal) {
+            maxVal = g->data[dataIdx];
+        }
+    }
+
+    return maxVal;
+}
+
+float gfx_GraphGetMinBetweenCursors(const gfx_GraphCursor *c1, const gfx_GraphCursor *c2) {
+    // 1. Validaciones de seguridad
+    if (!c1 || !c2 || !c1->parent || c1->parent != c2->parent) {
+        return 0; 
+    }
+
+    const gfx_Graph *g = c1->parent;
+    if (g->maxPoints < 2 || g->totalPointsAdded == 0) {
+        return 0;
+    }
+
+    // 2. Determinar Izquierda (Start) y Derecha (End)
+    int16_t leftX = (c1->relX < c2->relX) ? c1->relX : c2->relX;
+    int16_t rightX = (c1->relX > c2->relX) ? c1->relX : c2->relX;
+
+    // 3. Mapear a índices
+    uint16_t startIdx = (leftX * (g->maxPoints - 1)) / g->size.width;
+    uint16_t endIdx = (rightX * (g->maxPoints - 1)) / g->size.width;
+
+    // 4. Proteger contra áreas vacías (Fase Sweep)
+    if (g->totalPointsAdded < g->maxPoints) {
+        if (startIdx >= g->totalPointsAdded) {
+            return 0; 
+        }
+        if (endIdx >= g->totalPointsAdded) {
+            endIdx = g->totalPointsAdded - 1; 
+        }
+    }
+
+    // 5. Inicializar maxVal con el primer dato real dentro del rango
+    uint16_t firstDataIdx;
+    if (g->totalPointsAdded < g->maxPoints) {
+        firstDataIdx = startIdx;
+    } else {
+        firstDataIdx = (g->head + startIdx) % g->maxPoints;
+    }
+    
+    float maxVal = g->data[firstDataIdx];
+
+    // 6. Iterar buscando un valor mayor
+    // Comenzamos desde startIdx + 1 porque ya leímos el primer valor
+	uint16_t i = startIdx + 1;
+    for (; i <= endIdx; i++) {
+        uint16_t dataIdx;
+        
+        if (g->totalPointsAdded < g->maxPoints) {
+            dataIdx = i; 
+        } else {
+            dataIdx = (g->head + i) % g->maxPoints; 
+        }
+        
+        if (g->data[dataIdx] < maxVal) {
+            maxVal = g->data[dataIdx];
+        }
+    }
+
+    return maxVal;
 }
 
 void gfx_ImageRenderEVEComponents(gfx_Image *img) {

@@ -163,7 +163,7 @@ typedef struct Graph {
     Size size;
     Position pos;
 
-    int16_t *data;         
+    float *data;         
     uint16_t maxPoints;    
     uint16_t head;         
 
@@ -195,7 +195,7 @@ typedef struct {
     Position pos;
 
     // Array of pointers for data, and array of colors for each trace
-    int16_t *dataSets[MAX_GRAPH_DATA_SETS];
+    float *dataSets[MAX_GRAPH_DATA_SETS];
     uint16_t lineColors[MAX_GRAPH_DATA_SETS]; 
     
     uint8_t activeTraces;  // Replaced 'setSize' for clarity
@@ -388,7 +388,7 @@ bool gfx_processSliderTouch(gfx_Slider *sl, TouchStatus touch);
 
 void gfx_drawGraph(pixel16_t *pBuf, gfx_Graph *graph);
 
-void gfx_GraphAddPoint(gfx_Graph *graph, int16_t newValue);
+void gfx_GraphAddPoint(gfx_Graph *graph, float newValue);
 
 void gfx_GraphRenderEVEComponents(gfx_Graph *graph);
 
@@ -420,7 +420,13 @@ void gfx_drawGraphOverlay(pixel16_t *pBuf, gfx_GraphOverlay *ovl);
 
 void gfx_GraphCursorRenderEVE(gfx_GraphCursor *cursor);
 
-int16_t gfx_GraphCursorGetValue(gfx_GraphCursor *cursor);
+float gfx_GraphCursorGetValue(gfx_GraphCursor *cursor);
+
+float gfx_GraphGetAverageBetweenCursors(const gfx_GraphCursor *c1, const gfx_GraphCursor *c2);
+
+float gfx_GraphGetMaxBetweenCursors(const gfx_GraphCursor *c1, const gfx_GraphCursor *c2);
+
+float gfx_GraphGetMinBetweenCursors(const gfx_GraphCursor *c1, const gfx_GraphCursor *c2);
 
 bool gfx_processCursorTouch(gfx_GraphCursor *cursor, TouchStatus touch);
 
